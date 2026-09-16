@@ -4,7 +4,7 @@ import {
   Plus, Minus, Trash2, CheckCircle2, Circle, ArrowRight
 } from 'lucide-react';
 
-// --- MOCK DATA & CONSTANTS ---
+// --- MOCK DATA & CONSTANTS --- 
 const MENU_ITEMS = [
   { id: 1, name: 'เมี่ยงปลาทู', price: 50, type: 'food', defaultIngredients: ['ผักสด', 'น้ำจิ้มเมี่ยง', 'เส้นหมี่', 'ปลาทู'], sauceOptions: ['น้ำจิ้มเมี่ยงสูตรร้าน', 'น้ำยำขนมจีน'] },
   { id: 2, name: 'เมี่ยงหมูสามชั้น', price: 50, type: 'food', defaultIngredients: ['ผักสด', 'น้ำจิ้มเมี่ยง', 'เส้นหมี่', 'หมูสามชั้น'], sauceOptions: ['น้ำจิ้มเมี่ยงสูตรร้าน', 'น้ำยำขนมจีน'] },
