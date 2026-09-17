@@ -32,7 +32,7 @@ const INITIAL_ORDERS = [
 export default function App() {
   // === ตั้งค่า GOOGLE SHEETS API ===
   // นำ URL ที่ได้จากการ Deploy Google Apps Script มาใส่ตรงนี้ครับ
-  const GOOGLE_SHEET_URL = ''; 
+  const GOOGLE_SHEET_URL = 'https://script.google.com/macros/s/AKfycbyD27EVLs1LI3udA22qylobifS4icn2elPo_IjXAPw2hG_jw1tdKPptZY5KL73hkrdP/exec'; 
 
   // --- GLOBAL STATES ---
   const [currentView, setCurrentView] = useState('login'); 
