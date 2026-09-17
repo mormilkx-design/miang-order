@@ -17,8 +17,10 @@ const MENU_ITEMS = [
 const ADDONS = [
   { id: 'a1', name: 'เพิ่มปลาทู', price: 20 },
   { id: 'a2', name: 'เพิ่มหมูกรอบ', price: 20 },
-  { id: 'a4', name: 'เพิ่มน้ำจิ้มเมี่ยง (กระปุก)', price: 10 },
-  { id: 'a5', name: 'เพิ่มน้ำยำขนมจีน (กระปุก)', price: 10 },
+  { id: 'a3', name: 'เพิ่มกุ้ง', price: 20 },
+  { id: 'a4', name: 'เพิ่มหมูยอ', price: 10 },
+  { id: 'a5', name: 'เพิ่มน้ำจิ้มเมี่ยง (กระปุก)', price: 10 },
+  { id: 'a6', name: 'เพิ่มน้ำยำขนมจีน (กระปุก)', price: 10 },
 ];
 
 const FREE_SWAPS = [
@@ -321,7 +323,7 @@ export default function App() {
                     <div className="p-4 border-b flex justify-between items-center bg-blue-50 rounded-t-2xl">
                       <div>
                         <h2 className="font-bold text-blue-800 text-lg flex items-center gap-2">
-                          <Receipt className="w-5 h-5"/> สรุปรายการอาหาร ({selectedBills.length} บิล)
+                          <Receipt className="w-5 h-5"/> สรุปรายการอาหาร ({selectedBills.length} บิล) (รวม {totalBoxes} กล่อง)
                         </h2>
                         <p className="text-xs text-blue-600 mt-1">วันที่: {new Date().toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' })}</p>
                       </div>
