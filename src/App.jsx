@@ -18,7 +18,9 @@ const MENU_ITEMS = [
 const ADDONS = [
   { id: 'a1', name: 'เพิ่มปลาทู', price: 20 },
   { id: 'a2', name: 'เพิ่มหมูกรอบ', price: 20 },
-  { id: 'a3', name: 'เพิ่มน้ำจิ้มกระปุก', price: 10 },
+  { id: 'a3', name: 'เพิ่มหมูกรอบ', price: 20 },
+  { id: 'a4', name: 'เพิ่มน้ำจิ้มเมี่ยง (กระปุก)', price: 10 },
+  { id: 'a5', name: 'เพิ่มน้ำยำขนมจีน (กระปุก)', price: 10 },
 ];
 
 const FREE_SWAPS = [
@@ -29,7 +31,7 @@ const FREE_SWAPS = [
 
 export default function App() {
   // === ตั้งค่า GOOGLE SHEETS API ===
-  const GOOGLE_SHEET_URL = ''; // <-- ใส่ URL จาก Apps Script ตรงนี้
+  const GOOGLE_SHEET_URL = 'https://script.google.com/macros/s/AKfycbzz1ZtD8cx2K_1kL_-I44dKK9qnup_DXuQDKucqTihw5oAN_vmdQpvTzZAcIbIvuulz/exec'; // <-- ใส่ URL จาก Apps Script ตรงนี้
 
   // --- GLOBAL STATES ---
   const [currentView, setCurrentView] = useState('login'); 
