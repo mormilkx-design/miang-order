@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { 
   ShoppingCart, ChefHat, LayoutDashboard, LogOut, 
   Plus, Minus, Trash2, CheckCircle2, Circle, ArrowRight,
-  Search, FileText, Image as ImageIcon, Settings, History
+  Search, FileText, Image as ImageIcon, Settings, History, Receipt
 } from 'lucide-react';
 
 // --- INITIAL MOCK DATA --- 
@@ -30,12 +30,16 @@ const INITIAL_ORDERS = [
 ];
 
 export default function App() {
+  // === ตั้งค่า GOOGLE SHEETS API ===
+  // นำ URL ที่ได้จากการ Deploy Google Apps Script มาใส่ตรงนี้ครับ
+  const GOOGLE_SHEET_URL = ''; 
+
   // --- GLOBAL STATES ---
   const [currentView, setCurrentView] = useState('login'); 
   const [customerName, setCustomerName] = useState('');
   const [cart, setCart] = useState([]);
   
-  // --- DYNAMIC DATABASE STATES (For Admin to Edit) ---
+  // --- DATABASE STATES ---
   const [menuItems, setMenuItems] = useState(INITIAL_MENU_ITEMS);
   const [addons, setAddons] = useState(INITIAL_ADDONS);
   const [freeSwaps, setFreeSwaps] = useState(INITIAL_FREE_SWAPS);
@@ -43,12 +47,13 @@ export default function App() {
   const [deletedLogs, setDeletedLogs] = useState([]);
 
   // --- ADMIN DASHBOARD STATES ---
-  const [adminTab, setAdminTab] = useState('orders'); // orders, menu, logs
+  const [adminTab, setAdminTab] = useState('orders'); 
   const [searchQuery, setSearchQuery] = useState('');
-  const [dateFilter, setDateFilter] = useState(new Date().toISOString().split('T')[0]); // Default is Today
-  const [selectedBills, setSelectedBills] = useState([]); // For Bill Summary
+  const [dateFilter, setDateFilter] = useState(new Date().toISOString().split('T')[0]); 
+  const [selectedBills, setSelectedBills] = useState([]); 
+  const [showSummaryModal, setShowSummaryModal] = useState(false); // Modal สำหรับดูสรุปบิล
 
-  // --- MODAL STATES (Customer) ---
+  // --- CUSTOMER MODAL STATES ---
   const [selectedMenuItem, setSelectedMenuItem] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [activeIngredients, setActiveIngredients] = useState([]);
@@ -56,6 +61,18 @@ export default function App() {
   const [selectedSwap, setSelectedSwap] = useState('');
   const [selectedSauce, setSelectedSauce] = useState('');
   const [specialNote, setSpecialNote] = useState('');
+
+  // --- IMAGE UPLOAD HANDLER ---
+  const handleImageUpload = (id, event) => {
+    const file = event.target.files[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setMenuItems(menuItems.map(item => item.id === id ? { ...item, image: reader.result } : item));
+      };
+      reader.readAsDataURL(file);
+    }
+  };
 
   // --- HELPER FUNCTIONS (Customer) ---
   const handleOpenModal = (item) => {
@@ -92,7 +109,8 @@ export default function App() {
     setIsModalOpen(false);
   };
 
-  const handleSubmitOrder = () => {
+  // 🚀 สั่งออเดอร์ & ส่งเข้า Google Sheets
+  const handleSubmitOrder = async () => {
     if (cart.length === 0) return;
     const newOrder = {
       id: `ORD-${Math.floor(1000 + Math.random() * 9000)}`,
@@ -102,9 +120,35 @@ export default function App() {
       isPaid: false,
       date: new Date().toISOString()
     };
+    
+    // 1. บันทึกลงระบบหน้าเว็บ
     setOrders([newOrder, ...orders]);
     setCart([]);
     alert('ส่งออเดอร์เรียบร้อยแล้ว!');
+
+    // 2. ส่งข้อมูลไป Google Sheets (ถ้าใส่ URL แล้ว)
+    if (GOOGLE_SHEET_URL) {
+      const itemsString = cart.map(c => 
+        `${c.menuItem.name} ${c.addons.length > 0 ? '(+'+c.addons.map(a=>a.name).join(',')+')' : ''}`
+      ).join(' | ');
+
+      try {
+        await fetch(GOOGLE_SHEET_URL, {
+          method: 'POST',
+          mode: 'no-cors',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            orderId: newOrder.id,
+            date: new Date().toLocaleString('th-TH'),
+            customer: newOrder.customerName,
+            items: itemsString,
+            total: newOrder.total
+          })
+        });
+      } catch (error) {
+        console.error("Sheet Sync Error:", error);
+      }
+    }
   };
 
   // --- HELPER FUNCTIONS (Admin) ---
@@ -134,28 +178,15 @@ export default function App() {
           <ChefHat className="w-20 h-20 mx-auto text-green-600 mb-4" />
           <h1 className="text-3xl font-bold text-gray-800 mb-2">สวนสลัดหลังบ้าน</h1>
           <p className="text-gray-500 mb-8">กรุณากรอกชื่อของคุณเพื่อเริ่มสั่งอาหาร</p>
-          <input
-            type="text"
-            placeholder="ชื่อลูกค้า..."
-            className="w-full px-4 py-3 rounded-lg border-2 border-green-200 focus:border-green-500 focus:outline-none mb-4 text-lg"
-            value={customerName}
-            onChange={(e) => setCustomerName(e.target.value)}
-          />
-          <button
-            disabled={!customerName.trim()}
-            onClick={() => setCurrentView('customer')}
-            className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-          >
+          <input type="text" placeholder="ชื่อลูกค้า..." className="w-full px-4 py-3 rounded-lg border-2 border-green-200 focus:border-green-500 focus:outline-none mb-4 text-lg" value={customerName} onChange={(e) => setCustomerName(e.target.value)} />
+          <button disabled={!customerName.trim()} onClick={() => setCurrentView('customer')} className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded-lg transition disabled:opacity-50 flex items-center justify-center gap-2">
             เข้าสู่เมนู <ArrowRight className="w-5 h-5" />
           </button>
-          <button 
-            onClick={() => {
+          <button onClick={() => {
               const pin = prompt('กรุณากรอกรหัสผ่าน Admin (PIN):');
               if (pin === '987654') setCurrentView('admin');
               else if (pin) alert('รหัสผ่านไม่ถูกต้อง!');
-            }}
-            className="mt-6 text-sm text-gray-400 hover:text-green-600 underline"
-          >
+            }} className="mt-6 text-sm text-gray-400 hover:text-green-600 underline">
             สำหรับผู้ดูแลระบบ (Admin)
           </button>
         </div>
@@ -165,11 +196,9 @@ export default function App() {
 
   // 2. ADMIN VIEW
   if (currentView === 'admin') {
-    // Filter logic
     const filteredOrders = orders.filter(order => {
       const matchDate = order.date.startsWith(dateFilter);
-      const matchSearch = order.id.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                          order.customerName.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchSearch = order.id.toLowerCase().includes(searchQuery.toLowerCase()) || order.customerName.toLowerCase().includes(searchQuery.toLowerCase());
       return matchDate && matchSearch;
     });
 
@@ -181,27 +210,19 @@ export default function App() {
         <div className="max-w-6xl mx-auto">
           {/* Header */}
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
-            <div>
-              <h1 className="text-3xl font-bold text-gray-800 flex items-center gap-2">
-                <LayoutDashboard className="text-green-600" /> Admin Dashboard
-              </h1>
-            </div>
-            <button onClick={() => setCurrentView('login')} className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50">
+            <h1 className="text-3xl font-bold text-gray-800 flex items-center gap-2">
+              <LayoutDashboard className="text-green-600" /> Admin Dashboard
+            </h1>
+            <button onClick={() => setCurrentView('login')} className="flex items-center gap-2 px-4 py-2 bg-white border rounded-lg hover:bg-gray-50">
               <LogOut className="w-4 h-4" /> ออกจากระบบ
             </button>
           </div>
 
           {/* Admin Tabs */}
           <div className="flex gap-2 mb-6 overflow-x-auto pb-2">
-            <button onClick={() => setAdminTab('orders')} className={`px-4 py-2 rounded-lg font-bold flex items-center gap-2 whitespace-nowrap ${adminTab === 'orders' ? 'bg-green-600 text-white' : 'bg-white text-gray-600 border'}`}>
-              <FileText className="w-5 h-5" /> จัดการออเดอร์
-            </button>
-            <button onClick={() => setAdminTab('menu')} className={`px-4 py-2 rounded-lg font-bold flex items-center gap-2 whitespace-nowrap ${adminTab === 'menu' ? 'bg-green-600 text-white' : 'bg-white text-gray-600 border'}`}>
-              <Settings className="w-5 h-5" /> จัดการรายการอาหาร
-            </button>
-            <button onClick={() => setAdminTab('logs')} className={`px-4 py-2 rounded-lg font-bold flex items-center gap-2 whitespace-nowrap ${adminTab === 'logs' ? 'bg-red-600 text-white' : 'bg-white text-gray-600 border'}`}>
-              <History className="w-5 h-5" /> ประวัติการลบบิล
-            </button>
+            <button onClick={() => setAdminTab('orders')} className={`px-4 py-2 rounded-lg font-bold flex items-center gap-2 whitespace-nowrap ${adminTab === 'orders' ? 'bg-green-600 text-white' : 'bg-white text-gray-600 border'}`}><FileText className="w-5 h-5" /> จัดการออเดอร์</button>
+            <button onClick={() => setAdminTab('menu')} className={`px-4 py-2 rounded-lg font-bold flex items-center gap-2 whitespace-nowrap ${adminTab === 'menu' ? 'bg-green-600 text-white' : 'bg-white text-gray-600 border'}`}><Settings className="w-5 h-5" /> จัดการรายการอาหาร</button>
+            <button onClick={() => setAdminTab('logs')} className={`px-4 py-2 rounded-lg font-bold flex items-center gap-2 whitespace-nowrap ${adminTab === 'logs' ? 'bg-red-600 text-white' : 'bg-white text-gray-600 border'}`}><History className="w-5 h-5" /> ประวัติการลบบิล</button>
           </div>
 
           {/* TAB 1: ORDERS */}
@@ -225,16 +246,63 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Bill Summary (When selected) */}
+              {/* Bill Summary Alert */}
               {selectedBills.length > 0 && (
-                <div className="bg-blue-50 border border-blue-200 p-4 rounded-xl mb-6 flex justify-between items-center">
+                <div className="bg-blue-50 border border-blue-200 p-4 rounded-xl mb-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                   <div>
                     <h3 className="font-bold text-blue-800">สรุปข้อมูลบิลที่เลือก ({selectedBills.length} บิล)</h3>
                     <p className="text-sm text-blue-600">ยอดรวมทั้งหมด: ฿{selectedSummaryTotal}</p>
                   </div>
-                  <button onClick={() => setSelectedBills([])} className="text-sm bg-white text-blue-600 px-3 py-1 rounded shadow-sm border border-blue-200 hover:bg-blue-100">
-                    เคลียร์การเลือก
-                  </button>
+                  <div className="flex gap-2 w-full md:w-auto">
+                    <button onClick={() => setShowSummaryModal(true)} className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg font-bold shadow-sm hover:bg-blue-700">
+                      <Receipt className="w-4 h-4" /> ดูสรุปรายการ
+                    </button>
+                    <button onClick={() => setSelectedBills([])} className="flex-1 md:flex-none text-sm bg-white text-blue-600 px-3 py-2 rounded-lg shadow-sm border border-blue-200 hover:bg-blue-100">
+                      เคลียร์การเลือก
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Summary Modal */}
+              {showSummaryModal && (
+                <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+                  <div className="bg-white rounded-2xl w-full max-w-xl max-h-[80vh] flex flex-col">
+                    <div className="p-4 border-b flex justify-between items-center bg-blue-50 rounded-t-2xl">
+                      <h2 className="font-bold text-blue-800 text-lg flex items-center gap-2">
+                        <Receipt className="w-5 h-5"/> สรุปรายการอาหาร ({selectedBills.length} บิล)
+                      </h2>
+                      <button onClick={() => setShowSummaryModal(false)} className="p-2 bg-white rounded-full hover:bg-gray-200 text-gray-500"><Minus className="w-4 h-4" /></button>
+                    </div>
+                    <div className="p-4 overflow-y-auto">
+                      {orders.filter(o => selectedBills.includes(o.id)).map(order => (
+                        <div key={order.id} className="mb-4 border-b pb-4 last:border-0">
+                          <p className="font-bold text-gray-800 text-lg">{order.customerName} <span className="text-sm font-mono text-gray-400 font-normal">({order.id})</span></p>
+                          <div className="mt-2 space-y-2 pl-2">
+                            {order.items.map((item, idx) => (
+                              <div key={idx} className="flex justify-between items-start text-sm">
+                                <div>
+                                  <span className="font-semibold text-gray-700">- {item.menuItem?.name || item.name}</span>
+                                  {item.addons && item.addons.length > 0 && <p className="text-xs text-green-600 ml-3">(+ {item.addons.map(a => a.name).join(', ')})</p>}
+                                  {item.note && <p className="text-xs text-orange-500 ml-3">หมายเหตุ: {item.note}</p>}
+                                </div>
+                                <span className="font-semibold">฿{item.price}</span>
+                              </div>
+                            ))}
+                          </div>
+                          <div className="mt-3 text-right">
+                            <p className="text-sm font-bold text-green-700 bg-green-50 inline-block px-3 py-1 rounded-full border border-green-100">
+                              ยอดรวมบิลนี้: ฿{order.total}
+                            </p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="p-4 border-t bg-gray-50 rounded-b-2xl flex justify-between items-center">
+                      <span className="font-bold text-gray-600">ยอดรวมทั้งสิ้น</span>
+                      <span className="text-xl font-bold text-blue-700">฿{selectedSummaryTotal}</span>
+                    </div>
+                  </div>
                 </div>
               )}
 
@@ -253,13 +321,11 @@ export default function App() {
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredOrders.length === 0 && (
-                      <tr><td colSpan="7" className="text-center p-8 text-gray-400">ไม่มีออเดอร์ในวันที่หรือการค้นหานี้</td></tr>
-                    )}
+                    {filteredOrders.length === 0 && <tr><td colSpan="7" className="text-center p-8 text-gray-400">ไม่มีออเดอร์ในวันที่หรือการค้นหานี้</td></tr>}
                     {filteredOrders.map(order => (
                       <tr key={order.id} className={`border-b last:border-0 hover:bg-gray-50 ${selectedBills.includes(order.id) ? 'bg-blue-50/50' : ''}`}>
                         <td className="p-4 text-center">
-                          <input type="checkbox" checked={selectedBills.includes(order.id)} onChange={() => toggleSelectBill(order.id)} className="w-4 h-4 text-green-600 rounded cursor-pointer" />
+                          <input type="checkbox" checked={selectedBills.includes(order.id)} onChange={() => toggleSelectBill(order.id)} className="w-4 h-4 text-blue-600 rounded cursor-pointer" />
                         </td>
                         <td className="p-4 font-mono text-sm">{order.id}</td>
                         <td className="p-4 font-semibold">{order.customerName}</td>
@@ -273,18 +339,13 @@ export default function App() {
                         </td>
                         <td className="p-4 font-bold text-gray-800">฿{order.total}</td>
                         <td className="p-4">
-                          <button
-                            onClick={() => setOrders(orders.map(o => o.id === order.id ? { ...o, isPaid: !o.isPaid } : o))}
-                            className={`px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1 w-max ${order.isPaid ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'}`}
-                          >
+                          <button onClick={() => setOrders(orders.map(o => o.id === order.id ? { ...o, isPaid: !o.isPaid } : o))} className={`px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1 w-max ${order.isPaid ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'}`}>
                             {order.isPaid ? <CheckCircle2 className="w-4 h-4" /> : <Circle className="w-4 h-4" />}
                             {order.isPaid ? 'ชำระแล้ว' : 'รอชำระเงิน'}
                           </button>
                         </td>
                         <td className="p-4 text-center">
-                          <button onClick={() => handleDeleteOrder(order)} className="text-red-400 hover:text-red-600 p-2 rounded-full hover:bg-red-50">
-                            <Trash2 className="w-5 h-5" />
-                          </button>
+                          <button onClick={() => handleDeleteOrder(order)} className="text-red-400 hover:text-red-600 p-2 rounded-full hover:bg-red-50"><Trash2 className="w-5 h-5" /></button>
                         </td>
                       </tr>
                     ))}
@@ -294,56 +355,53 @@ export default function App() {
             </>
           )}
 
-          {/* TAB 2: MENU MANAGEMENT (Basic Placeholder logic for demo) */}
+          {/* TAB 2: MENU MANAGEMENT */}
           {adminTab === 'menu' && (
-            <div className="bg-white rounded-xl shadow-sm border p-6 text-center">
-              <ChefHat className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-              <h2 className="text-xl font-bold text-gray-700 mb-2">หน้าระบบจัดการเมนู</h2>
-              <p className="text-gray-500 mb-6">คุณสามารถเพิ่ม ลบ หรือแก้ไขรายการอาหาร รูปภาพ และท็อปปิ้งได้ที่นี่</p>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-left">
+            <div className="bg-white rounded-xl shadow-sm border p-6">
+              <h2 className="text-xl font-bold text-gray-800 mb-6 flex items-center gap-2">
+                <Settings className="text-green-600"/> จัดการรายการอาหาร (เบื้องต้น)
+              </h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {menuItems.map(item => (
-                  <div key={item.id} className="border rounded-lg p-4 flex gap-4 items-center">
-                    <div className="w-20 h-20 bg-gray-100 rounded-lg flex items-center justify-center overflow-hidden border">
-                      {item.image ? <img src={item.image} alt="menu" className="w-full h-full object-cover" /> : <ImageIcon className="text-gray-300" />}
+                  <div key={item.id} className="border border-gray-200 rounded-xl p-4 flex gap-4 items-center bg-gray-50">
+                    <div className="w-24 h-24 bg-white rounded-lg flex items-center justify-center overflow-hidden border shadow-sm flex-shrink-0">
+                      {item.image ? <img src={item.image} alt={item.name} className="w-full h-full object-cover" /> : <ImageIcon className="w-8 h-8 text-gray-300" />}
                     </div>
-                    <div className="flex-1">
-                      <h3 className="font-bold">{item.name}</h3>
-                      <p className="text-green-600 font-semibold">฿{item.price}</p>
+                    <div className="flex-1 flex flex-col justify-between h-full">
+                      <div>
+                        <h3 className="font-bold text-lg">{item.name}</h3>
+                        <p className="text-green-600 font-bold">฿{item.price}</p>
+                      </div>
+                      <div className="flex gap-2 mt-2">
+                        {/* ปุ่มอัปโหลดรูปภาพ */}
+                        <label className="cursor-pointer px-3 py-1.5 bg-blue-100 text-blue-700 rounded-lg text-sm hover:bg-blue-200 font-semibold text-center flex-1 transition">
+                          เปลี่ยนรูปภาพ
+                          <input type="file" accept="image/*" className="hidden" onChange={(e) => handleImageUpload(item.id, e)} />
+                        </label>
+                      </div>
                     </div>
-                    <button onClick={() => alert('ฟีเจอร์กำลังพัฒนา: สำหรับแก้ไขข้อมูลเมนูนี้')} className="px-3 py-1 bg-gray-100 text-gray-600 rounded text-sm hover:bg-gray-200">แก้ไข</button>
                   </div>
                 ))}
               </div>
-              <button onClick={() => alert('ฟีเจอร์กำลังพัฒนา: สำหรับเพิ่มเมนูใหม่')} className="mt-6 px-6 py-2 bg-green-600 text-white rounded-lg font-bold hover:bg-green-700">+ เพิ่มเมนูใหม่</button>
             </div>
           )}
 
           {/* TAB 3: LOGS */}
           {adminTab === 'logs' && (
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-              <div className="p-4 bg-red-50 border-b border-red-100">
-                <h2 className="font-bold text-red-800">ประวัติออเดอร์ที่ถูกลบ ({deletedLogs.length} รายการ)</h2>
-              </div>
-              {deletedLogs.length === 0 ? (
-                <p className="p-8 text-center text-gray-400">ยังไม่มีประวัติการลบบิล</p>
-              ) : (
+              <div className="p-4 bg-red-50 border-b border-red-100"><h2 className="font-bold text-red-800">ประวัติออเดอร์ที่ถูกลบ ({deletedLogs.length} รายการ)</h2></div>
+              {deletedLogs.length === 0 ? <p className="p-8 text-center text-gray-400">ยังไม่มีประวัติการลบบิล</p> : (
                 <table className="w-full text-left border-collapse min-w-[600px]">
                   <thead>
                     <tr className="bg-gray-50 text-gray-500 text-sm border-b">
-                      <th className="p-4">เวลาที่ลบ</th>
-                      <th className="p-4">รหัสบิลเดิม</th>
-                      <th className="p-4">ชื่อลูกค้า</th>
-                      <th className="p-4">ยอดรวม</th>
+                      <th className="p-4">เวลาที่ลบ</th><th className="p-4">รหัสบิลเดิม</th><th className="p-4">ชื่อลูกค้า</th><th className="p-4">ยอดรวม</th>
                     </tr>
                   </thead>
                   <tbody>
                     {deletedLogs.map((log, idx) => (
                       <tr key={idx} className="border-b last:border-0 text-gray-500 bg-gray-50/50">
                         <td className="p-4 text-sm">{new Date(log.deletedAt).toLocaleString('th-TH')}</td>
-                        <td className="p-4 font-mono text-sm line-through">{log.id}</td>
-                        <td className="p-4">{log.customerName}</td>
-                        <td className="p-4">฿{log.total}</td>
+                        <td className="p-4 font-mono text-sm line-through">{log.id}</td><td className="p-4">{log.customerName}</td><td className="p-4">฿{log.total}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -359,37 +417,27 @@ export default function App() {
   // 3. CUSTOMER VIEW
   return (
     <div className="min-h-screen bg-gray-50 pb-24 font-sans">
-      {/* Header */}
       <header className="bg-white shadow-sm sticky top-0 z-10">
         <div className="max-w-4xl mx-auto px-4 py-4 flex justify-between items-center">
           <div>
-            <h1 className="text-xl font-bold text-green-700 flex items-center gap-2">
-              <ChefHat className="w-6 h-6" /> สวนสลัดหลังบ้าน
-            </h1>
+            <h1 className="text-xl font-bold text-green-700 flex items-center gap-2"><ChefHat className="w-6 h-6" /> สวนสลัดหลังบ้าน</h1>
             <p className="text-sm text-gray-500">สวัสดี, คุณ {customerName}</p>
           </div>
-          <button 
-            onClick={() => {
+          <button onClick={() => {
               const pin = prompt('กรุณากรอกรหัสผ่าน Admin (PIN):');
               if (pin === '987654') setCurrentView('admin');
               else if (pin) alert('รหัสผ่านไม่ถูกต้อง!');
-            }}
-            className="text-gray-400 hover:text-gray-600"
-          >
-            <LayoutDashboard className="w-5 h-5" />
-          </button>
+            }} className="text-gray-400 hover:text-gray-600"><LayoutDashboard className="w-5 h-5" /></button>
         </div>
       </header>
 
-      {/* Main Menu */}
       <main className="max-w-4xl mx-auto px-4 py-6">
         <h2 className="text-lg font-bold text-gray-800 mb-4 border-l-4 border-green-500 pl-2">รายการอาหาร</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {menuItems.map(item => (
             <div key={item.id} className="bg-white rounded-xl p-4 shadow-sm border border-gray-100 flex justify-between items-center hover:shadow-md transition">
               <div className="flex gap-4 items-center">
-                {/* Image Placeholder */}
-                <div className="w-16 h-16 bg-green-50 rounded-lg flex items-center justify-center overflow-hidden flex-shrink-0">
+                <div className="w-16 h-16 bg-green-50 rounded-lg flex items-center justify-center overflow-hidden flex-shrink-0 shadow-sm border border-gray-100">
                   {item.image ? <img src={item.image} alt={item.name} className="w-full h-full object-cover" /> : <ImageIcon className="w-6 h-6 text-green-300" />}
                 </div>
                 <div>
@@ -398,25 +446,17 @@ export default function App() {
                   <p className="text-xs text-gray-400 mt-1 line-clamp-1">{item.defaultIngredients.join(', ')}</p>
                 </div>
               </div>
-              <button 
-                onClick={() => handleOpenModal(item)}
-                className="bg-green-100 text-green-700 hover:bg-green-600 hover:text-white p-2 rounded-lg font-bold transition flex items-center gap-1 flex-shrink-0"
-              >
-                <Plus className="w-5 h-5" />
-              </button>
+              <button onClick={() => handleOpenModal(item)} className="bg-green-100 text-green-700 hover:bg-green-600 hover:text-white p-2 rounded-lg font-bold transition flex flex-shrink-0"><Plus className="w-5 h-5" /></button>
             </div>
           ))}
         </div>
       </main>
 
-      {/* Cart Drawer */}
       {cart.length > 0 && (
         <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] z-20">
           <div className="max-w-4xl mx-auto px-4 py-3">
             <div className="flex justify-between items-center mb-3">
-              <h3 className="font-bold text-gray-800 flex items-center gap-2">
-                <ShoppingCart className="w-5 h-5 text-green-600" /> ตะกร้าของฉัน ({cart.length})
-              </h3>
+              <h3 className="font-bold text-gray-800 flex items-center gap-2"><ShoppingCart className="w-5 h-5 text-green-600" /> ตะกร้าของฉัน ({cart.length})</h3>
               <p className="font-bold text-xl text-green-600">฿{cart.reduce((s, i) => s + i.price, 0)}</p>
             </div>
             <div className="max-h-32 overflow-y-auto mb-3 text-sm">
@@ -429,75 +469,53 @@ export default function App() {
                       {item.addons.length > 0 && ` | เพิ่ม: ${item.addons.map(a => a.name).join(', ')}`}
                     </p>
                   </div>
-                  <button onClick={() => setCart(cart.filter(c => c.cartId !== item.cartId))} className="text-red-400 hover:text-red-600 p-1">
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+                  <button onClick={() => setCart(cart.filter(c => c.cartId !== item.cartId))} className="text-red-400 hover:text-red-600 p-1"><Trash2 className="w-4 h-4" /></button>
                 </div>
               ))}
             </div>
-            <button 
-              onClick={handleSubmitOrder}
-              className="w-full bg-green-600 text-white font-bold py-3 rounded-lg hover:bg-green-700 transition"
-            >
-              ส่งออเดอร์ (Submit Order)
-            </button>
+            <button onClick={handleSubmitOrder} className="w-full bg-green-600 text-white font-bold py-3 rounded-lg hover:bg-green-700 transition">ส่งออเดอร์ (Submit Order)</button>
           </div>
         </div>
       )}
 
-      {/* Customization Modal */}
       {isModalOpen && selectedMenuItem && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-end md:items-center justify-center md:p-4">
           <div className="bg-white w-full md:max-w-md md:rounded-2xl rounded-t-2xl max-h-[90vh] flex flex-col animate-in slide-in-from-bottom-full md:slide-in-from-bottom-0 md:zoom-in-95">
             <div className="p-4 border-b flex justify-between items-center sticky top-0 bg-white md:rounded-t-2xl z-10">
               <div>
-                <h3 className="font-bold text-xl">{selectedMenuItem.name}</h3>
-                <p className="text-green-600 font-semibold">เริ่มต้น ฿{selectedMenuItem.price}</p>
+                <h3 className="font-bold text-xl">{selectedMenuItem.name}</h3><p className="text-green-600 font-semibold">เริ่มต้น ฿{selectedMenuItem.price}</p>
               </div>
-              <button onClick={() => setIsModalOpen(false)} className="p-2 bg-gray-100 rounded-full hover:bg-gray-200">
-                <Minus className="w-5 h-5" />
-              </button>
+              <button onClick={() => setIsModalOpen(false)} className="p-2 bg-gray-100 rounded-full hover:bg-gray-200"><Minus className="w-5 h-5" /></button>
             </div>
-
             <div className="p-4 overflow-y-auto space-y-6 flex-1">
               {selectedMenuItem.defaultIngredients.length > 0 && (
                 <div>
-                  <div className="flex justify-between items-center mb-2">
-                    <h4 className="font-bold text-gray-800">เครื่องพื้นฐาน (ติ๊กออกได้)</h4>
-                    <button onClick={() => setActiveIngredients([])} className="text-xs text-red-500 border border-red-500 rounded px-2 py-1 hover:bg-red-50">
-                      ไม่เอาเครื่องเลย (Clear All)
-                    </button>
-                  </div>
+                  <div className="flex justify-between items-center mb-2"><h4 className="font-bold text-gray-800">เครื่องพื้นฐาน</h4><button onClick={() => setActiveIngredients([])} className="text-xs text-red-500 border border-red-500 rounded px-2 py-1">ไม่เอาเครื่องเลย</button></div>
                   <div className="grid grid-cols-2 gap-2">
                     {selectedMenuItem.defaultIngredients.map(ing => (
-                      <label key={ing} className="flex items-center gap-2 text-sm bg-gray-50 p-2 rounded border border-gray-100 cursor-pointer">
-                        <input type="checkbox" className="rounded text-green-600 focus:ring-green-500" checked={activeIngredients.includes(ing)}
-                          onChange={(e) => e.target.checked ? setActiveIngredients([...activeIngredients, ing]) : setActiveIngredients(activeIngredients.filter(i => i !== ing))} />
-                        {ing}
+                      <label key={ing} className="flex items-center gap-2 text-sm bg-gray-50 p-2 rounded border cursor-pointer">
+                        <input type="checkbox" className="rounded text-green-600" checked={activeIngredients.includes(ing)} onChange={(e) => e.target.checked ? setActiveIngredients([...activeIngredients, ing]) : setActiveIngredients(activeIngredients.filter(i => i !== ing))} />{ing}
                       </label>
                     ))}
                   </div>
                 </div>
               )}
-
               {freeSwaps.length > 0 && (
                 <div>
                   <h4 className="font-bold text-gray-800 mb-2">สลับเครื่อง (ไม่บวกเพิ่ม)</h4>
-                  <select className="w-full p-2 border border-gray-300 rounded-lg text-sm bg-white outline-none focus:border-green-500" value={selectedSwap} onChange={(e) => setSelectedSwap(e.target.value)}>
+                  <select className="w-full p-2 border rounded-lg text-sm bg-white outline-none focus:border-green-500" value={selectedSwap} onChange={(e) => setSelectedSwap(e.target.value)}>
                     {freeSwaps.map(swap => <option key={swap.id} value={swap.label}>{swap.label}</option>)}
                   </select>
                 </div>
               )}
-
               {addons.length > 0 && (
                 <div>
                   <h4 className="font-bold text-gray-800 mb-2">เพิ่มท็อปปิ้ง (คิดเงินเพิ่ม)</h4>
                   <div className="space-y-2">
                     {addons.map(addon => (
-                      <label key={addon.id} className="flex items-center justify-between p-2 border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-50">
+                      <label key={addon.id} className="flex items-center justify-between p-2 border rounded-lg cursor-pointer hover:bg-gray-50">
                         <div className="flex items-center gap-2">
-                          <input type="checkbox" className="rounded text-green-600 focus:ring-green-500" checked={activeAddons.includes(addon.id)}
-                            onChange={(e) => e.target.checked ? setActiveAddons([...activeAddons, addon.id]) : setActiveAddons(activeAddons.filter(id => id !== addon.id))} />
+                          <input type="checkbox" className="rounded text-green-600" checked={activeAddons.includes(addon.id)} onChange={(e) => e.target.checked ? setActiveAddons([...activeAddons, addon.id]) : setActiveAddons(activeAddons.filter(id => id !== addon.id))} />
                           <span className="text-sm">{addon.name}</span>
                         </div>
                         <span className="text-sm font-semibold text-gray-600">+฿{addon.price}</span>
@@ -506,32 +524,24 @@ export default function App() {
                   </div>
                 </div>
               )}
-
               {selectedMenuItem.sauceOptions.length > 0 && (
                 <div>
                   <h4 className="font-bold text-gray-800 mb-2">เลือกน้ำจิ้ม</h4>
                   <div className="flex flex-col gap-2">
                     {selectedMenuItem.sauceOptions.map(sauce => (
-                      <label key={sauce} className="flex items-center gap-2 text-sm cursor-pointer">
-                        <input type="radio" name="sauce" className="text-green-600 focus:ring-green-500" checked={selectedSauce === sauce} onChange={() => setSelectedSauce(sauce)} />
-                        {sauce}
-                      </label>
+                      <label key={sauce} className="flex items-center gap-2 text-sm cursor-pointer"><input type="radio" name="sauce" className="text-green-600" checked={selectedSauce === sauce} onChange={() => setSelectedSauce(sauce)} />{sauce}</label>
                     ))}
                   </div>
                 </div>
               )}
-
               <div>
                 <h4 className="font-bold text-gray-800 mb-2">หมายเหตุเพิ่มเติม</h4>
-                <textarea rows="2" placeholder="เช่น เผ็ดน้อย, ไม่ใส่ผักชี..." className="w-full p-2 border border-gray-300 rounded-lg text-sm outline-none focus:border-green-500"
-                  value={specialNote} onChange={(e) => setSpecialNote(e.target.value)}></textarea>
+                <textarea rows="2" placeholder="เช่น เผ็ดน้อย, ไม่ใส่ผักชี..." className="w-full p-2 border rounded-lg text-sm outline-none focus:border-green-500" value={specialNote} onChange={(e) => setSpecialNote(e.target.value)}></textarea>
               </div>
             </div>
-
             <div className="p-4 border-t bg-gray-50 md:rounded-b-2xl">
-              <button onClick={handleAddToCart} className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 rounded-lg transition flex justify-between items-center px-4">
-                <span>เพิ่มลงตะกร้า</span>
-                <span>฿{calculateItemTotal()}</span>
+              <button onClick={handleAddToCart} className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 rounded-lg flex justify-between px-4">
+                <span>เพิ่มลงตะกร้า</span><span>฿{calculateItemTotal()}</span>
               </button>
             </div>
           </div>
