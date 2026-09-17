@@ -1,38 +1,40 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState } from 'react';
 import { 
   ShoppingCart, ChefHat, LayoutDashboard, LogOut, 
   Plus, Minus, Trash2, CheckCircle2, Circle, ArrowRight,
-  Search, FileText, Image as ImageIcon, Settings, History, Receipt
+  Search, FileText, History, Receipt
 } from 'lucide-react';
 
-// --- INITIAL MOCK DATA --- 
-const INITIAL_MENU_ITEMS = [
-  { id: 1, name: 'เมี่ยงปลาทู', price: 50, type: 'food', image: '', defaultIngredients: ['ผักสด', 'น้ำจิ้มเมี่ยง', 'เส้นหมี่', 'ปลาทู'], sauceOptions: ['น้ำจิ้มเมี่ยงสูตรร้าน', 'น้ำยำขนมจีน'] },
-  { id: 2, name: 'เมี่ยงหมูสามชั้น', price: 50, type: 'food', image: '', defaultIngredients: ['ผักสด', 'น้ำจิ้มเมี่ยง', 'เส้นหมี่', 'หมูสามชั้น'], sauceOptions: ['น้ำจิ้มเมี่ยงสูตรร้าน', 'น้ำยำขนมจีน'] },
-  { id: 3, name: 'เมี่ยงหมูกรอบ', price: 60, type: 'food', image: '', defaultIngredients: ['ผักสด', 'น้ำจิ้มเมี่ยง', 'เส้นหมี่', 'หมูกรอบ'], sauceOptions: ['น้ำจิ้มเมี่ยงสูตรร้าน', 'น้ำยำขนมจีน'] }
+// --- STATIC MENU DATA --- 
+const MENU_ITEMS = [
+  { id: 1, name: 'เมี่ยงปลาทู', price: 50, type: 'food', defaultIngredients: ['ผักสด', 'น้ำจิ้มเมี่ยง', 'เส้นหมี่', 'ปลาทู'], sauceOptions: ['น้ำจิ้มเมี่ยงสูตรร้าน', 'น้ำยำขนมจีน'] },
+  { id: 2, name: 'เมี่ยงหมูสามชั้น', price: 50, type: 'food', defaultIngredients: ['ผักสด', 'น้ำจิ้มเมี่ยง', 'เส้นหมี่', 'หมูสามชั้น'], sauceOptions: ['น้ำจิ้มเมี่ยงสูตรร้าน', 'น้ำยำขนมจีน'] },
+  { id: 3, name: 'เมี่ยงหมูกรอบ', price: 60, type: 'food', defaultIngredients: ['ผักสด', 'น้ำจิ้มเมี่ยง', 'เส้นหมี่', 'หมูกรอบ'], sauceOptions: ['น้ำจิ้มเมี่ยงสูตรร้าน', 'น้ำยำขนมจีน'] },
+  { id: 4, name: 'เมี่ยงกุ้ง', price: 70, type: 'food', defaultIngredients: ['ผักสด', 'น้ำจิ้มเมี่ยง', 'เส้นหมี่', 'กุ้ง'], sauceOptions: ['น้ำจิ้มเมี่ยงสูตรร้าน', 'น้ำยำขนมจีน'] },
+  { id: 5, name: 'ยำขนมจีน', price: 50, type: 'food', defaultIngredients: ['ผักสด (ผักสลัดซอย, พริก, หอมแดง, ถั่วฝักยาว, ผักชีใบเลื่อย)', 'หมูสับ', 'หมูยอ', 'ปลาทู'], sauceOptions: ['น้ำยำขนมจีน', 'น้ำจิ้มเมี่ยงสูตรร้าน'] },
+  { id: 6, name: 'น้ำจิ้มแบบขวด', price: 45, type: 'special', defaultIngredients: [], sauceOptions: ['น้ำจิ้มเมี่ยงสูตรร้าน', 'น้ำยำขนมจีน'] }
 ];
 
-const INITIAL_ADDONS = [
+const ADDONS = [
   { id: 'a1', name: 'เพิ่มปลาทู', price: 20 },
   { id: 'a2', name: 'เพิ่มหมูกรอบ', price: 20 },
   { id: 'a3', name: 'เพิ่มน้ำจิ้มกระปุก', price: 10 },
 ];
 
-const INITIAL_FREE_SWAPS = [
+const FREE_SWAPS = [
   { id: 's1', label: 'ปกติ (ไม่สลับ)' },
   { id: 's2', label: 'ไม่เอาเส้น ขอเปลี่ยนเป็นผักเพิ่ม' },
   { id: 's3', label: 'ไม่เอาผัก ขอเปลี่ยนเป็นเส้นเพิ่ม' }
 ];
 
 const INITIAL_ORDERS = [
-  { id: 'ORD-001', customerName: 'คุณเอ', items: [{ name: 'เมี่ยงปลาทู', price: 50, qty: 1 }], total: 50, isPaid: true, date: new Date().toISOString() },
-  { id: 'ORD-002', customerName: 'คุณบี', items: [{ name: 'เมี่ยงหมูกรอบ', price: 80, qty: 1 }], total: 80, isPaid: false, date: new Date().toISOString() }
+  { id: 'ORD-001', customerName: 'คุณเอ', items: [{ menuItem: {name: 'เมี่ยงปลาทู'}, price: 50, addons: [] }], total: 50, isPaid: true, date: new Date().toISOString() },
+  { id: 'ORD-002', customerName: 'คุณบี', items: [{ menuItem: {name: 'เมี่ยงหมูกรอบ'}, price: 80, addons: [] }], total: 80, isPaid: false, date: new Date().toISOString() }
 ];
 
 export default function App() {
   // === ตั้งค่า GOOGLE SHEETS API ===
-  // นำ URL ที่ได้จากการ Deploy Google Apps Script มาใส่ตรงนี้ครับ
-  const GOOGLE_SHEET_URL = 'https://script.google.com/macros/s/AKfycbyD27EVLs1LI3udA22qylobifS4icn2elPo_IjXAPw2hG_jw1tdKPptZY5KL73hkrdP/exec'; 
+  const GOOGLE_SHEET_URL = ''; 
 
   // --- GLOBAL STATES ---
   const [currentView, setCurrentView] = useState('login'); 
@@ -40,9 +42,6 @@ export default function App() {
   const [cart, setCart] = useState([]);
   
   // --- DATABASE STATES ---
-  const [menuItems, setMenuItems] = useState(INITIAL_MENU_ITEMS);
-  const [addons, setAddons] = useState(INITIAL_ADDONS);
-  const [freeSwaps, setFreeSwaps] = useState(INITIAL_FREE_SWAPS);
   const [orders, setOrders] = useState(INITIAL_ORDERS);
   const [deletedLogs, setDeletedLogs] = useState([]);
 
@@ -51,7 +50,7 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState('');
   const [dateFilter, setDateFilter] = useState(new Date().toISOString().split('T')[0]); 
   const [selectedBills, setSelectedBills] = useState([]); 
-  const [showSummaryModal, setShowSummaryModal] = useState(false); // Modal สำหรับดูสรุปบิล
+  const [showSummaryModal, setShowSummaryModal] = useState(false); 
 
   // --- CUSTOMER MODAL STATES ---
   const [selectedMenuItem, setSelectedMenuItem] = useState(null);
@@ -62,24 +61,12 @@ export default function App() {
   const [selectedSauce, setSelectedSauce] = useState('');
   const [specialNote, setSpecialNote] = useState('');
 
-  // --- IMAGE UPLOAD HANDLER ---
-  const handleImageUpload = (id, event) => {
-    const file = event.target.files[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setMenuItems(menuItems.map(item => item.id === id ? { ...item, image: reader.result } : item));
-      };
-      reader.readAsDataURL(file);
-    }
-  };
-
   // --- HELPER FUNCTIONS (Customer) ---
   const handleOpenModal = (item) => {
     setSelectedMenuItem(item);
     setActiveIngredients([...item.defaultIngredients]);
     setActiveAddons([]);
-    setSelectedSwap(freeSwaps[0]?.label || '');
+    setSelectedSwap(FREE_SWAPS[0]?.label || '');
     setSelectedSauce(item.sauceOptions[0] || '');
     setSpecialNote('');
     setIsModalOpen(true);
@@ -88,7 +75,7 @@ export default function App() {
   const calculateItemTotal = () => {
     if (!selectedMenuItem) return 0;
     const addonsTotal = activeAddons.reduce((sum, addonId) => {
-      const addon = addons.find(a => a.id === addonId);
+      const addon = ADDONS.find(a => a.id === addonId);
       return sum + (addon ? addon.price : 0);
     }, 0);
     return selectedMenuItem.price + addonsTotal;
@@ -99,7 +86,7 @@ export default function App() {
       cartId: Math.random().toString(36).substr(2, 9),
       menuItem: selectedMenuItem,
       ingredients: activeIngredients,
-      addons: activeAddons.map(id => addons.find(a => a.id === id)),
+      addons: activeAddons.map(id => ADDONS.find(a => a.id === id)),
       swap: selectedSwap,
       sauce: selectedSauce,
       note: specialNote,
@@ -109,7 +96,6 @@ export default function App() {
     setIsModalOpen(false);
   };
 
-  // 🚀 สั่งออเดอร์ & ส่งเข้า Google Sheets
   const handleSubmitOrder = async () => {
     if (cart.length === 0) return;
     const newOrder = {
@@ -121,12 +107,10 @@ export default function App() {
       date: new Date().toISOString()
     };
     
-    // 1. บันทึกลงระบบหน้าเว็บ
     setOrders([newOrder, ...orders]);
     setCart([]);
     alert('ส่งออเดอร์เรียบร้อยแล้ว!');
 
-    // 2. ส่งข้อมูลไป Google Sheets (ถ้าใส่ URL แล้ว)
     if (GOOGLE_SHEET_URL) {
       const itemsString = cart.map(c => 
         `${c.menuItem.name} ${c.addons.length > 0 ? '(+'+c.addons.map(a=>a.name).join(',')+')' : ''}`
@@ -221,7 +205,6 @@ export default function App() {
           {/* Admin Tabs */}
           <div className="flex gap-2 mb-6 overflow-x-auto pb-2">
             <button onClick={() => setAdminTab('orders')} className={`px-4 py-2 rounded-lg font-bold flex items-center gap-2 whitespace-nowrap ${adminTab === 'orders' ? 'bg-green-600 text-white' : 'bg-white text-gray-600 border'}`}><FileText className="w-5 h-5" /> จัดการออเดอร์</button>
-            <button onClick={() => setAdminTab('menu')} className={`px-4 py-2 rounded-lg font-bold flex items-center gap-2 whitespace-nowrap ${adminTab === 'menu' ? 'bg-green-600 text-white' : 'bg-white text-gray-600 border'}`}><Settings className="w-5 h-5" /> จัดการรายการอาหาร</button>
             <button onClick={() => setAdminTab('logs')} className={`px-4 py-2 rounded-lg font-bold flex items-center gap-2 whitespace-nowrap ${adminTab === 'logs' ? 'bg-red-600 text-white' : 'bg-white text-gray-600 border'}`}><History className="w-5 h-5" /> ประวัติการลบบิล</button>
           </div>
 
@@ -355,37 +338,6 @@ export default function App() {
             </>
           )}
 
-          {/* TAB 2: MENU MANAGEMENT */}
-          {adminTab === 'menu' && (
-            <div className="bg-white rounded-xl shadow-sm border p-6">
-              <h2 className="text-xl font-bold text-gray-800 mb-6 flex items-center gap-2">
-                <Settings className="text-green-600"/> จัดการรายการอาหาร (เบื้องต้น)
-              </h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {menuItems.map(item => (
-                  <div key={item.id} className="border border-gray-200 rounded-xl p-4 flex gap-4 items-center bg-gray-50">
-                    <div className="w-24 h-24 bg-white rounded-lg flex items-center justify-center overflow-hidden border shadow-sm flex-shrink-0">
-                      {item.image ? <img src={item.image} alt={item.name} className="w-full h-full object-cover" /> : <ImageIcon className="w-8 h-8 text-gray-300" />}
-                    </div>
-                    <div className="flex-1 flex flex-col justify-between h-full">
-                      <div>
-                        <h3 className="font-bold text-lg">{item.name}</h3>
-                        <p className="text-green-600 font-bold">฿{item.price}</p>
-                      </div>
-                      <div className="flex gap-2 mt-2">
-                        {/* ปุ่มอัปโหลดรูปภาพ */}
-                        <label className="cursor-pointer px-3 py-1.5 bg-blue-100 text-blue-700 rounded-lg text-sm hover:bg-blue-200 font-semibold text-center flex-1 transition">
-                          เปลี่ยนรูปภาพ
-                          <input type="file" accept="image/*" className="hidden" onChange={(e) => handleImageUpload(item.id, e)} />
-                        </label>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
           {/* TAB 3: LOGS */}
           {adminTab === 'logs' && (
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
@@ -434,11 +386,11 @@ export default function App() {
       <main className="max-w-4xl mx-auto px-4 py-6">
         <h2 className="text-lg font-bold text-gray-800 mb-4 border-l-4 border-green-500 pl-2">รายการอาหาร</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {menuItems.map(item => (
+          {MENU_ITEMS.map(item => (
             <div key={item.id} className="bg-white rounded-xl p-4 shadow-sm border border-gray-100 flex justify-between items-center hover:shadow-md transition">
               <div className="flex gap-4 items-center">
                 <div className="w-16 h-16 bg-green-50 rounded-lg flex items-center justify-center overflow-hidden flex-shrink-0 shadow-sm border border-gray-100">
-                  {item.image ? <img src={item.image} alt={item.name} className="w-full h-full object-cover" /> : <ImageIcon className="w-6 h-6 text-green-300" />}
+                  <ChefHat className="w-6 h-6 text-green-300" />
                 </div>
                 <div>
                   <h3 className="font-bold text-gray-800 text-lg">{item.name}</h3>
@@ -500,19 +452,19 @@ export default function App() {
                   </div>
                 </div>
               )}
-              {freeSwaps.length > 0 && (
+              {FREE_SWAPS.length > 0 && (
                 <div>
                   <h4 className="font-bold text-gray-800 mb-2">สลับเครื่อง (ไม่บวกเพิ่ม)</h4>
                   <select className="w-full p-2 border rounded-lg text-sm bg-white outline-none focus:border-green-500" value={selectedSwap} onChange={(e) => setSelectedSwap(e.target.value)}>
-                    {freeSwaps.map(swap => <option key={swap.id} value={swap.label}>{swap.label}</option>)}
+                    {FREE_SWAPS.map(swap => <option key={swap.id} value={swap.label}>{swap.label}</option>)}
                   </select>
                 </div>
               )}
-              {addons.length > 0 && (
+              {ADDONS.length > 0 && (
                 <div>
                   <h4 className="font-bold text-gray-800 mb-2">เพิ่มท็อปปิ้ง (คิดเงินเพิ่ม)</h4>
                   <div className="space-y-2">
-                    {addons.map(addon => (
+                    {ADDONS.map(addon => (
                       <label key={addon.id} className="flex items-center justify-between p-2 border rounded-lg cursor-pointer hover:bg-gray-50">
                         <div className="flex items-center gap-2">
                           <input type="checkbox" className="rounded text-green-600" checked={activeAddons.includes(addon.id)} onChange={(e) => e.target.checked ? setActiveAddons([...activeAddons, addon.id]) : setActiveAddons(activeAddons.filter(id => id !== addon.id))} />
