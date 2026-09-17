@@ -2,10 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { 
   ShoppingCart, ChefHat, LayoutDashboard, LogOut, 
   Plus, Minus, Trash2, CheckCircle2, Circle, ArrowRight,
-  Search, FileText, History, Receipt, RefreshCw
+  Search, FileText, History, Receipt, RefreshCw, Box
 } from 'lucide-react';
 
-// --- STATIC MENU DATA --- 
 const MENU_ITEMS = [
   { id: 1, name: 'เมี่ยงปลาทู', price: 50, type: 'food', defaultIngredients: ['ผักสด', 'น้ำจิ้มเมี่ยง', 'เส้นหมี่', 'ปลาทู'], sauceOptions: ['น้ำจิ้มเมี่ยงสูตรร้าน', 'น้ำยำขนมจีน'] },
   { id: 2, name: 'เมี่ยงหมูสามชั้น', price: 50, type: 'food', defaultIngredients: ['ผักสด', 'น้ำจิ้มเมี่ยง', 'เส้นหมี่', 'หมูสามชั้น'], sauceOptions: ['น้ำจิ้มเมี่ยงสูตรร้าน', 'น้ำยำขนมจีน'] },
@@ -18,7 +17,6 @@ const MENU_ITEMS = [
 const ADDONS = [
   { id: 'a1', name: 'เพิ่มปลาทู', price: 20 },
   { id: 'a2', name: 'เพิ่มหมูกรอบ', price: 20 },
-  { id: 'a3', name: 'เพิ่มกุ้ง', price: 20 },
   { id: 'a4', name: 'เพิ่มน้ำจิ้มเมี่ยง (กระปุก)', price: 10 },
   { id: 'a5', name: 'เพิ่มน้ำยำขนมจีน (กระปุก)', price: 10 },
 ];
@@ -30,7 +28,6 @@ const FREE_SWAPS = [
 ];
 
 export default function App() {
-  // === ตั้งค่า GOOGLE SHEETS API ===
   const GOOGLE_SHEET_URL = 'https://script.google.com/macros/s/AKfycbzz1ZtD8cx2K_1kL_-I44dKK9qnup_DXuQDKucqTihw5oAN_vmdQpvTzZAcIbIvuulz/exec'; 
 
   const [currentView, setCurrentView] = useState('login'); 
@@ -43,7 +40,6 @@ export default function App() {
 
   const [adminTab, setAdminTab] = useState('orders'); 
   const [searchQuery, setSearchQuery] = useState('');
-  const [dateFilter, setDateFilter] = useState(new Date().toISOString().split('T')[0]); 
   const [selectedBills, setSelectedBills] = useState([]); 
   const [showSummaryModal, setShowSummaryModal] = useState(false); 
 
@@ -55,15 +51,14 @@ export default function App() {
   const [selectedSauce, setSelectedSauce] = useState('');
   const [specialNote, setSpecialNote] = useState('');
 
+  // 🚀 ดึงข้อมูลออเดอร์
   const fetchOrdersFromSheet = async () => {
     if (!GOOGLE_SHEET_URL) return;
     setIsLoadingOrders(true);
     try {
       const response = await fetch(GOOGLE_SHEET_URL);
       const data = await response.json();
-      
       const formattedOrders = data.map(row => {
-        // แยกรายการอาหารแต่ละข้อด้วยเครื่องหมาย |
         const itemsArray = row.itemsString ? row.itemsString.split(' | ') : [];
         return {
           id: row.id,
@@ -71,10 +66,9 @@ export default function App() {
           customerName: row.customerName,
           total: Number(row.total),
           isPaid: false,
-          items: itemsArray.map(str => ({ name: str })) // ทำให้เป็น Object เพื่อเอาไปวนลูปแสดงผล
+          items: itemsArray.map(str => ({ name: str })) 
         };
       }).reverse(); 
-
       setOrders(formattedOrders);
     } catch (error) {
       console.error("Fetch Data Error:", error);
@@ -83,11 +77,27 @@ export default function App() {
     }
   };
 
+  // 🚀 ดึงข้อมูลประวัติการลบบิล
+  const fetchLogsFromSheet = async () => {
+    if (!GOOGLE_SHEET_URL) return;
+    setIsLoadingOrders(true);
+    try {
+      const response = await fetch(`${GOOGLE_SHEET_URL}?action=logs`);
+      const data = await response.json();
+      setDeletedLogs(data);
+    } catch (error) {
+      console.error("Fetch Logs Error:", error);
+    } finally {
+      setIsLoadingOrders(false);
+    }
+  };
+
   useEffect(() => {
     if (currentView === 'admin' && GOOGLE_SHEET_URL) {
-      fetchOrdersFromSheet();
+      if (adminTab === 'orders') fetchOrdersFromSheet();
+      if (adminTab === 'logs') fetchLogsFromSheet();
     }
-  }, [currentView]);
+  }, [currentView, adminTab]);
 
   const handleOpenModal = (item) => {
     setSelectedMenuItem(item);
@@ -126,15 +136,10 @@ export default function App() {
   const handleSubmitOrder = async () => {
     if (cart.length === 0) return;
 
-    // จัดเรียงข้อความรายการอาหาร + ท็อปปิ้ง + หมายเหตุ
     const mappedItems = cart.map(c => {
       let detail = c.menuItem.name;
-      if (c.addons && c.addons.length > 0) {
-        detail += ` (+${c.addons.map(a => a.name).join(', ')})`;
-      }
-      if (c.note) {
-        detail += ` [หมายเหตุ: ${c.note}]`;
-      }
+      if (c.addons && c.addons.length > 0) detail += ` (+${c.addons.map(a => a.name).join(', ')})`;
+      if (c.note) detail += ` [หมายเหตุ: ${c.note}]`;
       return detail;
     });
 
@@ -143,7 +148,7 @@ export default function App() {
     const newOrder = {
       id: `ORD-${Math.floor(1000 + Math.random() * 9000)}`,
       customerName,
-      items: mappedItems.map(str => ({ name: str })), // ทำให้โครงสร้างตรงกับตอนดึงจาก Sheet
+      items: mappedItems.map(str => ({ name: str })), 
       total: cart.reduce((sum, item) => sum + item.price, 0),
       isPaid: false,
       date: new Date().toISOString()
@@ -186,10 +191,7 @@ export default function App() {
             method: 'POST',
             mode: 'no-cors',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              action: 'delete',
-              orderId: order.id
-            })
+            body: JSON.stringify({ action: 'delete', orderId: order.id })
           });
         } catch (error) {
           console.error("Sheet Sync Error:", error);
@@ -206,7 +208,6 @@ export default function App() {
     }
   };
 
-  // 1. LOGIN VIEW
   if (currentView === 'login') {
     return (
       <div className="min-h-screen bg-green-50 flex items-center justify-center p-4 font-sans">
@@ -230,7 +231,6 @@ export default function App() {
     );
   }
 
-  // 2. ADMIN VIEW
   if (currentView === 'admin') {
     const filteredOrders = orders.filter(order => {
       const searchTerm = searchQuery.toLowerCase();
@@ -242,17 +242,14 @@ export default function App() {
 
     const dailyRev = filteredOrders.filter(o => o.isPaid).reduce((sum, o) => sum + o.total, 0);
     const selectedSummaryTotal = orders.filter(o => selectedBills.includes(o.id)).reduce((sum, o) => sum + o.total, 0);
-
-    // ตรรกะเช็คการเลือกบิลทั้งหมด
+    const totalBoxes = filteredOrders.reduce((sum, order) => sum + order.items.length, 0); 
     const isAllSelected = filteredOrders.length > 0 && filteredOrders.every(o => selectedBills.includes(o.id));
     
     const handleSelectAll = () => {
       if (isAllSelected) {
-        // เอาออกทั้งหมดที่อยู่ในหน้าจอค้นหาปัจจุบัน
         const filteredIds = filteredOrders.map(o => o.id);
         setSelectedBills(selectedBills.filter(id => !filteredIds.includes(id)));
       } else {
-        // เลือกทั้งหมดที่อยู่ในหน้าจอค้นหาปัจจุบัน
         const newSelected = new Set([...selectedBills, ...filteredOrders.map(o => o.id)]);
         setSelectedBills(Array.from(newSelected));
       }
@@ -266,7 +263,7 @@ export default function App() {
               <LayoutDashboard className="text-green-600" /> Admin Dashboard
             </h1>
             <div className="flex gap-2">
-              <button onClick={fetchOrdersFromSheet} disabled={isLoadingOrders} className="flex items-center gap-2 px-4 py-2 bg-white border rounded-lg hover:bg-blue-50 text-blue-600 font-semibold disabled:opacity-50">
+              <button onClick={() => adminTab === 'orders' ? fetchOrdersFromSheet() : fetchLogsFromSheet()} disabled={isLoadingOrders} className="flex items-center gap-2 px-4 py-2 bg-white border rounded-lg hover:bg-blue-50 text-blue-600 font-semibold disabled:opacity-50">
                 <RefreshCw className={`w-4 h-4 ${isLoadingOrders ? 'animate-spin' : ''}`} /> {isLoadingOrders ? 'กำลังโหลด...' : 'อัปเดตข้อมูล'}
               </button>
               <button onClick={() => setCurrentView('login')} className="flex items-center gap-2 px-4 py-2 bg-white border rounded-lg hover:bg-gray-50">
@@ -282,10 +279,14 @@ export default function App() {
 
           {adminTab === 'orders' && (
             <>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
                 <div className="bg-white p-6 rounded-xl shadow-sm border-l-4 border-green-500">
-                  <p className="text-sm text-gray-500 font-semibold mb-1">ยอดขายที่ค้นพบ (Paid)</p>
+                  <p className="text-sm text-gray-500 font-semibold mb-1">ยอดขายที่ค้นพบ</p>
                   <p className="text-3xl font-bold text-green-600">฿{dailyRev}</p>
+                </div>
+                <div className="bg-white p-6 rounded-xl shadow-sm border-l-4 border-orange-500">
+                  <p className="text-sm text-gray-500 font-semibold mb-1 flex items-center gap-1"><Box className="w-4 h-4"/> จำนวนกล่อง</p>
+                  <p className="text-3xl font-bold text-orange-600">{totalBoxes}</p>
                 </div>
                 <div className="bg-white p-6 rounded-xl shadow-sm border-l-4 border-blue-500 md:col-span-2 flex flex-col justify-center">
                   <p className="text-sm text-gray-500 font-semibold mb-2">ค้นหา & กรองข้อมูล</p>
@@ -313,37 +314,39 @@ export default function App() {
                 </div>
               )}
 
+              {/* Summary Modal (Compact Version) */}
               {showSummaryModal && (
                 <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
-                  <div className="bg-white rounded-2xl w-full max-w-xl max-h-[80vh] flex flex-col">
+                  <div className="bg-white rounded-2xl w-full max-w-xl max-h-[85vh] flex flex-col">
                     <div className="p-4 border-b flex justify-between items-center bg-blue-50 rounded-t-2xl">
-                      <h2 className="font-bold text-blue-800 text-lg flex items-center gap-2">
-                        <Receipt className="w-5 h-5"/> สรุปรายการอาหาร ({selectedBills.length} บิล)
-                      </h2>
+                      <div>
+                        <h2 className="font-bold text-blue-800 text-lg flex items-center gap-2">
+                          <Receipt className="w-5 h-5"/> สรุปรายการอาหาร ({selectedBills.length} บิล)
+                        </h2>
+                        <p className="text-xs text-blue-600 mt-1">วันที่: {new Date().toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' })}</p>
+                      </div>
                       <button onClick={() => setShowSummaryModal(false)} className="p-2 bg-white rounded-full hover:bg-gray-200 text-gray-500"><Minus className="w-4 h-4" /></button>
                     </div>
-                    <div className="p-4 overflow-y-auto">
+                    <div className="p-4 overflow-y-auto bg-gray-50/50 space-y-2">
                       {orders.filter(o => selectedBills.includes(o.id)).map(order => (
-                        <div key={order.id} className="mb-4 border-b pb-4 last:border-0">
-                          <p className="font-bold text-gray-800 text-lg">{order.customerName} <span className="text-sm font-mono text-gray-400 font-normal">({order.id})</span></p>
-                          <div className="mt-2 space-y-2 pl-2">
+                        <div key={order.id} className="bg-white p-3 rounded-lg border border-gray-200 shadow-sm">
+                          <div className="flex justify-between items-center mb-1 border-b border-gray-100 pb-1">
+                            <p className="font-bold text-gray-800 text-sm">
+                              {order.customerName} <span className="text-xs font-mono text-gray-400 font-normal">({order.id})</span>
+                            </p>
+                            <span className="text-sm font-bold text-green-700 bg-green-50 px-2 py-0.5 rounded border border-green-100">฿{order.total}</span>
+                          </div>
+                          <div className="space-y-1 pl-1">
                             {order.items.map((item, idx) => (
-                              <div key={idx} className="flex justify-between items-start text-sm mb-1">
-                                <div className="text-gray-700">
-                                  <span className="font-semibold">{idx + 1}. {item.name}</span>
-                                </div>
+                              <div key={idx} className="text-xs text-gray-700 leading-tight">
+                                <span className="font-semibold">{idx + 1}. {item.name}</span>
                               </div>
                             ))}
-                          </div>
-                          <div className="mt-3 text-right">
-                            <p className="text-sm font-bold text-green-700 bg-green-50 inline-block px-3 py-1 rounded-full border border-green-100">
-                              ยอดรวมบิลนี้: ฿{order.total}
-                            </p>
                           </div>
                         </div>
                       ))}
                     </div>
-                    <div className="p-4 border-t bg-gray-50 rounded-b-2xl flex justify-between items-center">
+                    <div className="p-4 border-t bg-white rounded-b-2xl flex justify-between items-center shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
                       <span className="font-bold text-gray-600">ยอดรวมทั้งสิ้น</span>
                       <span className="text-xl font-bold text-blue-700">฿{selectedSummaryTotal}</span>
                     </div>
@@ -356,14 +359,7 @@ export default function App() {
                   <thead>
                     <tr className="bg-gray-50 text-gray-600 text-sm border-b">
                       <th className="p-4 w-12 text-center">
-                        {/* ปุ่มเลือกทั้งหมด */}
-                        <input 
-                          type="checkbox" 
-                          checked={isAllSelected}
-                          onChange={handleSelectAll}
-                          className="w-4 h-4 text-blue-600 rounded cursor-pointer" 
-                          title="เลือกทั้งหมด"
-                        />
+                        <input type="checkbox" checked={isAllSelected} onChange={handleSelectAll} className="w-4 h-4 text-blue-600 rounded cursor-pointer" title="เลือกทั้งหมด"/>
                       </th>
                       <th className="p-4">วันที่/เวลา</th>
                       <th className="p-4">รหัสบิล</th>
@@ -388,7 +384,6 @@ export default function App() {
                         <td className="p-4 font-mono text-sm">{order.id}</td>
                         <td className="p-4 font-semibold">{order.customerName}</td>
                         <td className="p-4 text-sm text-gray-600">
-                          {/* แสดงรายการอาหารเป็นข้อๆ 1, 2, 3... */}
                           {order.items.map((item, idx) => (
                             <div key={idx} className="mb-1 bg-gray-100 p-1 px-2 rounded break-words whitespace-pre-wrap">
                               <span className="font-bold text-gray-800">{idx + 1}. {item.name}</span>
@@ -416,7 +411,7 @@ export default function App() {
           {adminTab === 'logs' && (
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
               <div className="p-4 bg-red-50 border-b border-red-100"><h2 className="font-bold text-red-800">ประวัติออเดอร์ที่ถูกลบ (ล่าสุด)</h2></div>
-              {deletedLogs.length === 0 ? <p className="p-8 text-center text-gray-400">ยังไม่มีประวัติการลบบิลในหน้าเว็บ</p> : (
+              {deletedLogs.length === 0 && !isLoadingOrders ? <p className="p-8 text-center text-gray-400">ยังไม่มีประวัติการลบบิลใน Google Sheets</p> : (
                 <table className="w-full text-left border-collapse min-w-[600px]">
                   <thead>
                     <tr className="bg-gray-50 text-gray-500 text-sm border-b">
@@ -426,7 +421,7 @@ export default function App() {
                   <tbody>
                     {deletedLogs.map((log, idx) => (
                       <tr key={idx} className="border-b last:border-0 text-gray-500 bg-gray-50/50">
-                        <td className="p-4 text-sm">{new Date(log.deletedAt).toLocaleString('th-TH')}</td>
+                        <td className="p-4 text-sm">{log.deletedAt}</td>
                         <td className="p-4 font-mono text-sm line-through">{log.id}</td><td className="p-4">{log.customerName}</td><td className="p-4">฿{log.total}</td>
                       </tr>
                     ))}
@@ -440,7 +435,6 @@ export default function App() {
     );
   }
 
-  // 3. CUSTOMER VIEW
   return (
     <div className="min-h-screen bg-gray-50 pb-24 font-sans">
       <header className="bg-white shadow-sm sticky top-0 z-10">
@@ -450,23 +444,14 @@ export default function App() {
             <p className="text-sm text-gray-500">สวัสดี, คุณ {customerName}</p>
           </div>
           <div className="flex items-center gap-4">
-            <button 
-              onClick={() => {
-                setCustomerName('');
-                setCart([]);
-                setCurrentView('login');
-              }} 
-              className="text-sm text-green-600 bg-green-50 px-3 py-1.5 rounded-lg border border-green-200 hover:bg-green-100 font-semibold transition"
-            >
+            <button onClick={() => { setCustomerName(''); setCart([]); setCurrentView('login'); }} className="text-sm text-green-600 bg-green-50 px-3 py-1.5 rounded-lg border border-green-200 hover:bg-green-100 font-semibold transition">
               หน้าแรก
             </button>
             <button onClick={() => {
                 const pin = prompt('กรุณากรอกรหัสผ่าน Admin (PIN):');
                 if (pin === '987654') setCurrentView('admin');
                 else if (pin) alert('รหัสผ่านไม่ถูกต้อง!');
-              }} className="text-gray-400 hover:text-gray-600">
-                <LayoutDashboard className="w-5 h-5" />
-            </button>
+              }} className="text-gray-400 hover:text-gray-600"><LayoutDashboard className="w-5 h-5" /></button>
           </div>
         </div>
       </header>
