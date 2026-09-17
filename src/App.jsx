@@ -18,7 +18,8 @@ const MENU_ITEMS = [
 const ADDONS = [
   { id: 'a1', name: 'เพิ่มปลาทู', price: 20 },
   { id: 'a2', name: 'เพิ่มหมูกรอบ', price: 20 },
-  { id: 'a3', name: 'เพิ่มน้ำจิ้มกระปุก', price: 10 },
+  { id: 'a3', name: 'เพิ่มน้ำจิ้มเมี่ยง (กระปุก)', price: 10 },
+  { id: 'a4', name: 'เพิ่มน้ำยำขนมจีน (กระปุก)', price: 10 },
 ];
 
 const FREE_SWAPS = [
