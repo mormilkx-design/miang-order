@@ -31,26 +31,22 @@ const FREE_SWAPS = [
 
 export default function App() {
   // === ตั้งค่า GOOGLE SHEETS API ===
-  const GOOGLE_SHEET_URL = 'https://script.google.com/macros/s/AKfycbzz1ZtD8cx2K_1kL_-I44dKK9qnup_DXuQDKucqTihw5oAN_vmdQpvTzZAcIbIvuulz/exec'; // <-- ใส่ URL จาก Apps Script ตรงนี้
+  const GOOGLE_SHEET_URL = 'https://script.google.com/macros/s/AKfycbzz1ZtD8cx2K_1kL_-I44dKK9qnup_DXuQDKucqTihw5oAN_vmdQpvTzZAcIbIvuulz/exec'; 
 
-  // --- GLOBAL STATES ---
   const [currentView, setCurrentView] = useState('login'); 
   const [customerName, setCustomerName] = useState('');
   const [cart, setCart] = useState([]);
   
-  // --- DATABASE STATES ---
   const [orders, setOrders] = useState([]);
   const [deletedLogs, setDeletedLogs] = useState([]);
   const [isLoadingOrders, setIsLoadingOrders] = useState(false);
 
-  // --- ADMIN DASHBOARD STATES ---
   const [adminTab, setAdminTab] = useState('orders'); 
   const [searchQuery, setSearchQuery] = useState('');
   const [dateFilter, setDateFilter] = useState(new Date().toISOString().split('T')[0]); 
   const [selectedBills, setSelectedBills] = useState([]); 
   const [showSummaryModal, setShowSummaryModal] = useState(false); 
 
-  // --- CUSTOMER MODAL STATES ---
   const [selectedMenuItem, setSelectedMenuItem] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [activeIngredients, setActiveIngredients] = useState([]);
@@ -59,7 +55,6 @@ export default function App() {
   const [selectedSauce, setSelectedSauce] = useState('');
   const [specialNote, setSpecialNote] = useState('');
 
-  // 🚀 ดึงข้อมูลจาก Google Sheets
   const fetchOrdersFromSheet = async () => {
     if (!GOOGLE_SHEET_URL) return;
     setIsLoadingOrders(true);
@@ -67,14 +62,13 @@ export default function App() {
       const response = await fetch(GOOGLE_SHEET_URL);
       const data = await response.json();
       
-      // แปลงข้อมูลจาก Sheet ให้เข้ากับรูปแบบของระบบ และเรียงอันดับใหม่ล่าสุดขึ้นก่อน
       const formattedOrders = data.map(row => ({
         id: row.id,
         date: row.date,
         customerName: row.customerName,
         total: Number(row.total),
-        isPaid: false, // หมายเหตุ: ตอนนี้ยังไม่ได้เก็บสถานะจ่ายเงินใน Sheet 
-        items: [{ menuItem: { name: row.itemsString }, addons: [] }] // จัดกลุ่มรายการให้ตรงกับ UI เดิม
+        isPaid: false,
+        items: [{ menuItem: { name: row.itemsString }, addons: [] }] 
       })).reverse(); 
 
       setOrders(formattedOrders);
@@ -85,14 +79,12 @@ export default function App() {
     }
   };
 
-  // ดึงข้อมูลอัตโนมัติเมื่อเข้าหน้า Admin
   useEffect(() => {
     if (currentView === 'admin' && GOOGLE_SHEET_URL) {
       fetchOrdersFromSheet();
     }
   }, [currentView]);
 
-  // --- HELPER FUNCTIONS (Customer) ---
   const handleOpenModal = (item) => {
     setSelectedMenuItem(item);
     setActiveIngredients([...item.defaultIngredients]);
@@ -138,12 +130,10 @@ export default function App() {
       date: new Date().toISOString()
     };
     
-    // บันทึกลงตัวแปรชั่วคราวก่อนเพื่อให้เห็นทันที
     setOrders([newOrder, ...orders]);
     setCart([]);
     alert('ส่งออเดอร์เรียบร้อยแล้ว!');
 
-    // ส่งเข้า Sheet
     if (GOOGLE_SHEET_URL) {
       const itemsString = cart.map(c => 
         `${c.menuItem.name} ${c.addons.length > 0 ? '(+'+c.addons.map(a=>a.name).join(',')+')' : ''}`
@@ -155,6 +145,7 @@ export default function App() {
           mode: 'no-cors',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
+            action: 'add', // ส่งตัวแปรบอกว่าเป็นออเดอร์ใหม่
             orderId: newOrder.id,
             date: new Date().toLocaleString('th-TH'),
             customer: newOrder.customerName,
@@ -168,12 +159,29 @@ export default function App() {
     }
   };
 
-  // --- HELPER FUNCTIONS (Admin) ---
-  const handleDeleteOrder = (order) => {
+  const handleDeleteOrder = async (order) => {
     if(window.confirm(`แน่ใจหรือไม่ว่าต้องการลบบิล ${order.id}?`)) {
+      // 1. อัปเดตหน้าเว็บให้หายไปทันที
       setDeletedLogs([{ ...order, deletedAt: new Date().toISOString() }, ...deletedLogs]);
       setOrders(orders.filter(o => o.id !== order.id));
       setSelectedBills(selectedBills.filter(id => id !== order.id));
+
+      // 2. ส่งคำสั่งให้ Google Sheets ดึงข้อมูลออก
+      if (GOOGLE_SHEET_URL) {
+        try {
+          await fetch(GOOGLE_SHEET_URL, {
+            method: 'POST',
+            mode: 'no-cors',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              action: 'delete', // ส่งตัวแปรบอกว่าให้ลบ
+              orderId: order.id
+            })
+          });
+        } catch (error) {
+          console.error("Sheet Sync Error:", error);
+        }
+      }
     }
   };
 
@@ -184,8 +192,6 @@ export default function App() {
       setSelectedBills([...selectedBills, orderId]);
     }
   };
-
-  // --- RENDER VIEWS ---
 
   // 1. LOGIN VIEW
   if (currentView === 'login') {
@@ -213,9 +219,7 @@ export default function App() {
 
   // 2. ADMIN VIEW
   if (currentView === 'admin') {
-    // ปรับการกรองข้อมูลนิดหน่อย เพราะวันที่จาก Sheet อาจจะเป็นรูปแบบ 17/9/2569
     const filteredOrders = orders.filter(order => {
-      // ค้นหาแบบกว้างๆ (ทั้งชื่อ รหัส และวันที่)
       const searchTerm = searchQuery.toLowerCase();
       const matchSearch = order.id.toLowerCase().includes(searchTerm) || 
                           order.customerName.toLowerCase().includes(searchTerm) ||
@@ -229,7 +233,6 @@ export default function App() {
     return (
       <div className="min-h-screen bg-gray-100 p-4 md:p-8 font-sans pb-20">
         <div className="max-w-6xl mx-auto">
-          {/* Header */}
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
             <h1 className="text-3xl font-bold text-gray-800 flex items-center gap-2">
               <LayoutDashboard className="text-green-600" /> Admin Dashboard
@@ -244,16 +247,13 @@ export default function App() {
             </div>
           </div>
 
-          {/* Admin Tabs */}
           <div className="flex gap-2 mb-6 overflow-x-auto pb-2">
             <button onClick={() => setAdminTab('orders')} className={`px-4 py-2 rounded-lg font-bold flex items-center gap-2 whitespace-nowrap ${adminTab === 'orders' ? 'bg-green-600 text-white' : 'bg-white text-gray-600 border'}`}><FileText className="w-5 h-5" /> จัดการออเดอร์</button>
             <button onClick={() => setAdminTab('logs')} className={`px-4 py-2 rounded-lg font-bold flex items-center gap-2 whitespace-nowrap ${adminTab === 'logs' ? 'bg-red-600 text-white' : 'bg-white text-gray-600 border'}`}><History className="w-5 h-5" /> ประวัติการลบบิล</button>
           </div>
 
-          {/* TAB 1: ORDERS */}
           {adminTab === 'orders' && (
             <>
-              {/* Stats & Filters */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
                 <div className="bg-white p-6 rounded-xl shadow-sm border-l-4 border-green-500">
                   <p className="text-sm text-gray-500 font-semibold mb-1">ยอดขายที่ค้นพบ (Paid)</p>
@@ -268,7 +268,6 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Bill Summary Alert */}
               {selectedBills.length > 0 && (
                 <div className="bg-blue-50 border border-blue-200 p-4 rounded-xl mb-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                   <div>
@@ -286,7 +285,6 @@ export default function App() {
                 </div>
               )}
 
-              {/* Summary Modal */}
               {showSummaryModal && (
                 <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
                   <div className="bg-white rounded-2xl w-full max-w-xl max-h-[80vh] flex flex-col">
@@ -328,7 +326,6 @@ export default function App() {
                 </div>
               )}
 
-              {/* Order Table */}
               <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-x-auto">
                 <table className="w-full text-left border-collapse min-w-[900px]">
                   <thead>
@@ -382,11 +379,10 @@ export default function App() {
             </>
           )}
 
-          {/* TAB 3: LOGS */}
           {adminTab === 'logs' && (
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-              <div className="p-4 bg-red-50 border-b border-red-100"><h2 className="font-bold text-red-800">ประวัติออเดอร์ที่ถูกลบ (ลบเฉพาะในหน้าเว็บ)</h2></div>
-              {deletedLogs.length === 0 ? <p className="p-8 text-center text-gray-400">ยังไม่มีประวัติการลบบิล</p> : (
+              <div className="p-4 bg-red-50 border-b border-red-100"><h2 className="font-bold text-red-800">ประวัติออเดอร์ที่ถูกลบ (ล่าสุด)</h2></div>
+              {deletedLogs.length === 0 ? <p className="p-8 text-center text-gray-400">ยังไม่มีประวัติการลบบิลในหน้าเว็บ</p> : (
                 <table className="w-full text-left border-collapse min-w-[600px]">
                   <thead>
                     <tr className="bg-gray-50 text-gray-500 text-sm border-b">
