@@ -18,7 +18,6 @@ const MENU_ITEMS = [
 const ADDONS = [
   { id: 'a1', name: 'เพิ่มปลาทู', price: 20 },
   { id: 'a2', name: 'เพิ่มหมูกรอบ', price: 20 },
-  { id: 'a3', name: 'เพิ่มหมูกรอบ', price: 20 },
   { id: 'a4', name: 'เพิ่มน้ำจิ้มเมี่ยง (กระปุก)', price: 10 },
   { id: 'a5', name: 'เพิ่มน้ำยำขนมจีน (กระปุก)', price: 10 },
 ];
@@ -62,14 +61,18 @@ export default function App() {
       const response = await fetch(GOOGLE_SHEET_URL);
       const data = await response.json();
       
-      const formattedOrders = data.map(row => ({
-        id: row.id,
-        date: row.date,
-        customerName: row.customerName,
-        total: Number(row.total),
-        isPaid: false,
-        items: [{ menuItem: { name: row.itemsString }, addons: [] }] 
-      })).reverse(); 
+      const formattedOrders = data.map(row => {
+        // แยกรายการอาหารแต่ละข้อด้วยเครื่องหมาย |
+        const itemsArray = row.itemsString ? row.itemsString.split(' | ') : [];
+        return {
+          id: row.id,
+          date: row.date,
+          customerName: row.customerName,
+          total: Number(row.total),
+          isPaid: false,
+          items: itemsArray.map(str => ({ name: str })) // ทำให้เป็น Object เพื่อเอาไปวนลูปแสดงผล
+        };
+      }).reverse(); 
 
       setOrders(formattedOrders);
     } catch (error) {
@@ -121,10 +124,25 @@ export default function App() {
 
   const handleSubmitOrder = async () => {
     if (cart.length === 0) return;
+
+    // จัดเรียงข้อความรายการอาหาร + ท็อปปิ้ง + หมายเหตุ
+    const mappedItems = cart.map(c => {
+      let detail = c.menuItem.name;
+      if (c.addons && c.addons.length > 0) {
+        detail += ` (+${c.addons.map(a => a.name).join(', ')})`;
+      }
+      if (c.note) {
+        detail += ` [หมายเหตุ: ${c.note}]`;
+      }
+      return detail;
+    });
+
+    const itemsString = mappedItems.join(' | ');
+
     const newOrder = {
       id: `ORD-${Math.floor(1000 + Math.random() * 9000)}`,
       customerName,
-      items: cart,
+      items: mappedItems.map(str => ({ name: str })), // ทำให้โครงสร้างตรงกับตอนดึงจาก Sheet
       total: cart.reduce((sum, item) => sum + item.price, 0),
       isPaid: false,
       date: new Date().toISOString()
@@ -135,17 +153,13 @@ export default function App() {
     alert('ส่งออเดอร์เรียบร้อยแล้ว!');
 
     if (GOOGLE_SHEET_URL) {
-      const itemsString = cart.map(c => 
-        `${c.menuItem.name} ${c.addons.length > 0 ? '(+'+c.addons.map(a=>a.name).join(',')+')' : ''}`
-      ).join(' | ');
-
       try {
         await fetch(GOOGLE_SHEET_URL, {
           method: 'POST',
           mode: 'no-cors',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            action: 'add', // ส่งตัวแปรบอกว่าเป็นออเดอร์ใหม่
+            action: 'add', 
             orderId: newOrder.id,
             date: new Date().toLocaleString('th-TH'),
             customer: newOrder.customerName,
@@ -161,12 +175,10 @@ export default function App() {
 
   const handleDeleteOrder = async (order) => {
     if(window.confirm(`แน่ใจหรือไม่ว่าต้องการลบบิล ${order.id}?`)) {
-      // 1. อัปเดตหน้าเว็บให้หายไปทันที
       setDeletedLogs([{ ...order, deletedAt: new Date().toISOString() }, ...deletedLogs]);
       setOrders(orders.filter(o => o.id !== order.id));
       setSelectedBills(selectedBills.filter(id => id !== order.id));
 
-      // 2. ส่งคำสั่งให้ Google Sheets ดึงข้อมูลออก
       if (GOOGLE_SHEET_URL) {
         try {
           await fetch(GOOGLE_SHEET_URL, {
@@ -174,7 +186,7 @@ export default function App() {
             mode: 'no-cors',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              action: 'delete', // ส่งตัวแปรบอกว่าให้ลบ
+              action: 'delete',
               orderId: order.id
             })
           });
@@ -229,6 +241,21 @@ export default function App() {
 
     const dailyRev = filteredOrders.filter(o => o.isPaid).reduce((sum, o) => sum + o.total, 0);
     const selectedSummaryTotal = orders.filter(o => selectedBills.includes(o.id)).reduce((sum, o) => sum + o.total, 0);
+
+    // ตรรกะเช็คการเลือกบิลทั้งหมด
+    const isAllSelected = filteredOrders.length > 0 && filteredOrders.every(o => selectedBills.includes(o.id));
+    
+    const handleSelectAll = () => {
+      if (isAllSelected) {
+        // เอาออกทั้งหมดที่อยู่ในหน้าจอค้นหาปัจจุบัน
+        const filteredIds = filteredOrders.map(o => o.id);
+        setSelectedBills(selectedBills.filter(id => !filteredIds.includes(id)));
+      } else {
+        // เลือกทั้งหมดที่อยู่ในหน้าจอค้นหาปัจจุบัน
+        const newSelected = new Set([...selectedBills, ...filteredOrders.map(o => o.id)]);
+        setSelectedBills(Array.from(newSelected));
+      }
+    };
 
     return (
       <div className="min-h-screen bg-gray-100 p-4 md:p-8 font-sans pb-20">
@@ -300,13 +327,10 @@ export default function App() {
                           <p className="font-bold text-gray-800 text-lg">{order.customerName} <span className="text-sm font-mono text-gray-400 font-normal">({order.id})</span></p>
                           <div className="mt-2 space-y-2 pl-2">
                             {order.items.map((item, idx) => (
-                              <div key={idx} className="flex justify-between items-start text-sm">
-                                <div>
-                                  <span className="font-semibold text-gray-700">- {item.menuItem?.name || item.name}</span>
-                                  {item.addons && item.addons.length > 0 && <p className="text-xs text-green-600 ml-3">(+ {item.addons.map(a => a.name).join(', ')})</p>}
-                                  {item.note && <p className="text-xs text-orange-500 ml-3">หมายเหตุ: {item.note}</p>}
+                              <div key={idx} className="flex justify-between items-start text-sm mb-1">
+                                <div className="text-gray-700">
+                                  <span className="font-semibold">{idx + 1}. {item.name}</span>
                                 </div>
-                                <span className="font-semibold">฿{item.price}</span>
                               </div>
                             ))}
                           </div>
@@ -330,7 +354,16 @@ export default function App() {
                 <table className="w-full text-left border-collapse min-w-[900px]">
                   <thead>
                     <tr className="bg-gray-50 text-gray-600 text-sm border-b">
-                      <th className="p-4 w-12 text-center">เลือก</th>
+                      <th className="p-4 w-12 text-center">
+                        {/* ปุ่มเลือกทั้งหมด */}
+                        <input 
+                          type="checkbox" 
+                          checked={isAllSelected}
+                          onChange={handleSelectAll}
+                          className="w-4 h-4 text-blue-600 rounded cursor-pointer" 
+                          title="เลือกทั้งหมด"
+                        />
+                      </th>
                       <th className="p-4">วันที่/เวลา</th>
                       <th className="p-4">รหัสบิล</th>
                       <th className="p-4">ชื่อลูกค้า</th>
@@ -354,10 +387,10 @@ export default function App() {
                         <td className="p-4 font-mono text-sm">{order.id}</td>
                         <td className="p-4 font-semibold">{order.customerName}</td>
                         <td className="p-4 text-sm text-gray-600">
+                          {/* แสดงรายการอาหารเป็นข้อๆ 1, 2, 3... */}
                           {order.items.map((item, idx) => (
-                            <div key={idx} className="mb-1 bg-gray-100 p-1 px-2 rounded">
-                              <span className="font-bold text-gray-800">{item.name || item.menuItem?.name}</span>
-                              {item.addons && item.addons.length > 0 && <span className="text-xs text-green-600 ml-1">(+{item.addons.map(a => a.name).join(',')})</span>}
+                            <div key={idx} className="mb-1 bg-gray-100 p-1 px-2 rounded break-words whitespace-pre-wrap">
+                              <span className="font-bold text-gray-800">{idx + 1}. {item.name}</span>
                             </div>
                           ))}
                         </td>
