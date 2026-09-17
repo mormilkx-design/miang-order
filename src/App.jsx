@@ -18,6 +18,7 @@ const MENU_ITEMS = [
 const ADDONS = [
   { id: 'a1', name: 'เพิ่มปลาทู', price: 20 },
   { id: 'a2', name: 'เพิ่มหมูกรอบ', price: 20 },
+  { id: 'a3', name: 'เพิ่มกุ้ง', price: 20 },
   { id: 'a4', name: 'เพิ่มน้ำจิ้มเมี่ยง (กระปุก)', price: 10 },
   { id: 'a5', name: 'เพิ่มน้ำยำขนมจีน (กระปุก)', price: 10 },
 ];
@@ -211,7 +212,7 @@ export default function App() {
       <div className="min-h-screen bg-green-50 flex items-center justify-center p-4 font-sans">
         <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-8 text-center border-t-8 border-green-600">
           <ChefHat className="w-20 h-20 mx-auto text-green-600 mb-4" />
-          <h1 className="text-3xl font-bold text-gray-800 mb-2">สวนสลัดหลังบ้าน</h1>
+          <h1 className="text-3xl font-bold text-gray-800 mb-2">สลัดหลังบ้าน</h1>
           <p className="text-gray-500 mb-8">กรุณากรอกชื่อของคุณเพื่อเริ่มสั่งอาหาร</p>
           <input type="text" placeholder="ชื่อลูกค้า..." className="w-full px-4 py-3 rounded-lg border-2 border-green-200 focus:border-green-500 focus:outline-none mb-4 text-lg" value={customerName} onChange={(e) => setCustomerName(e.target.value)} />
           <button disabled={!customerName.trim()} onClick={() => setCurrentView('customer')} className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded-lg transition disabled:opacity-50 flex items-center justify-center gap-2">
@@ -445,7 +446,7 @@ export default function App() {
       <header className="bg-white shadow-sm sticky top-0 z-10">
         <div className="max-w-4xl mx-auto px-4 py-4 flex justify-between items-center">
           <div>
-            <h1 className="text-xl font-bold text-green-700 flex items-center gap-2"><ChefHat className="w-6 h-6" /> สวนสลัดหลังบ้าน</h1>
+            <h1 className="text-xl font-bold text-green-700 flex items-center gap-2"><ChefHat className="w-6 h-6" /> สลัดหลังบ้าน</h1>
             <p className="text-sm text-gray-500">สวัสดี, คุณ {customerName}</p>
           </div>
           <div className="flex items-center gap-4">
