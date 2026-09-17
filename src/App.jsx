@@ -35,7 +35,7 @@ const INITIAL_ORDERS = [
 
 export default function App() {
   // === ตั้งค่า GOOGLE SHEETS API ===
-  const GOOGLE_SHEET_URL = ''; 
+  const GOOGLE_SHEET_URL = 'https://script.google.com/macros/s/AKfycbzz1ZtD8cx2K_1kL_-I44dKK9qnup_DXuQDKucqTihw5oAN_vmdQpvTzZAcIbIvuulz/exec'; 
 
   // --- GLOBAL STATES ---
   const [currentView, setCurrentView] = useState('login'); 
