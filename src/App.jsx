@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   ShoppingCart, ChefHat, LayoutDashboard, LogOut, 
   Plus, Minus, Trash2, CheckCircle2, Circle, ArrowRight,
-  Search, FileText, History, Receipt
+  Search, FileText, History, Receipt, RefreshCw
 } from 'lucide-react';
 
 // --- STATIC MENU DATA --- 
@@ -18,9 +18,7 @@ const MENU_ITEMS = [
 const ADDONS = [
   { id: 'a1', name: 'เพิ่มปลาทู', price: 20 },
   { id: 'a2', name: 'เพิ่มหมูกรอบ', price: 20 },
-  { id: 'a3', name: 'เพิ่มกุ้ง', price: 20 },
-  { id: 'a4', name: 'เพิ่มน้ำจิ้มเมี่ยง (กระปุก)', price: 10 },
-  { id: 'a5', name: 'เพิ่มน้ำยำขนมจีน (กระปุก)', price: 10 },
+  { id: 'a3', name: 'เพิ่มน้ำจิ้มกระปุก', price: 10 },
 ];
 
 const FREE_SWAPS = [
@@ -29,14 +27,9 @@ const FREE_SWAPS = [
   { id: 's3', label: 'ไม่เอาผัก ขอเปลี่ยนเป็นเส้นเพิ่ม' }
 ];
 
-const INITIAL_ORDERS = [
-  { id: 'ORD-001', customerName: 'คุณเอ', items: [{ menuItem: {name: 'เมี่ยงปลาทู'}, price: 50, addons: [] }], total: 50, isPaid: true, date: new Date().toISOString() },
-  { id: 'ORD-002', customerName: 'คุณบี', items: [{ menuItem: {name: 'เมี่ยงหมูกรอบ'}, price: 80, addons: [] }], total: 80, isPaid: false, date: new Date().toISOString() }
-];
-
 export default function App() {
   // === ตั้งค่า GOOGLE SHEETS API ===
-  const GOOGLE_SHEET_URL = 'https://script.google.com/macros/s/AKfycbzz1ZtD8cx2K_1kL_-I44dKK9qnup_DXuQDKucqTihw5oAN_vmdQpvTzZAcIbIvuulz/exec'; 
+  const GOOGLE_SHEET_URL = ''; // <-- ใส่ URL จาก Apps Script ตรงนี้
 
   // --- GLOBAL STATES ---
   const [currentView, setCurrentView] = useState('login'); 
@@ -44,8 +37,9 @@ export default function App() {
   const [cart, setCart] = useState([]);
   
   // --- DATABASE STATES ---
-  const [orders, setOrders] = useState(INITIAL_ORDERS);
+  const [orders, setOrders] = useState([]);
   const [deletedLogs, setDeletedLogs] = useState([]);
+  const [isLoadingOrders, setIsLoadingOrders] = useState(false);
 
   // --- ADMIN DASHBOARD STATES ---
   const [adminTab, setAdminTab] = useState('orders'); 
@@ -62,6 +56,39 @@ export default function App() {
   const [selectedSwap, setSelectedSwap] = useState('');
   const [selectedSauce, setSelectedSauce] = useState('');
   const [specialNote, setSpecialNote] = useState('');
+
+  // 🚀 ดึงข้อมูลจาก Google Sheets
+  const fetchOrdersFromSheet = async () => {
+    if (!GOOGLE_SHEET_URL) return;
+    setIsLoadingOrders(true);
+    try {
+      const response = await fetch(GOOGLE_SHEET_URL);
+      const data = await response.json();
+      
+      // แปลงข้อมูลจาก Sheet ให้เข้ากับรูปแบบของระบบ และเรียงอันดับใหม่ล่าสุดขึ้นก่อน
+      const formattedOrders = data.map(row => ({
+        id: row.id,
+        date: row.date,
+        customerName: row.customerName,
+        total: Number(row.total),
+        isPaid: false, // หมายเหตุ: ตอนนี้ยังไม่ได้เก็บสถานะจ่ายเงินใน Sheet 
+        items: [{ menuItem: { name: row.itemsString }, addons: [] }] // จัดกลุ่มรายการให้ตรงกับ UI เดิม
+      })).reverse(); 
+
+      setOrders(formattedOrders);
+    } catch (error) {
+      console.error("Fetch Data Error:", error);
+    } finally {
+      setIsLoadingOrders(false);
+    }
+  };
+
+  // ดึงข้อมูลอัตโนมัติเมื่อเข้าหน้า Admin
+  useEffect(() => {
+    if (currentView === 'admin' && GOOGLE_SHEET_URL) {
+      fetchOrdersFromSheet();
+    }
+  }, [currentView]);
 
   // --- HELPER FUNCTIONS (Customer) ---
   const handleOpenModal = (item) => {
@@ -109,10 +136,12 @@ export default function App() {
       date: new Date().toISOString()
     };
     
+    // บันทึกลงตัวแปรชั่วคราวก่อนเพื่อให้เห็นทันที
     setOrders([newOrder, ...orders]);
     setCart([]);
     alert('ส่งออเดอร์เรียบร้อยแล้ว!');
 
+    // ส่งเข้า Sheet
     if (GOOGLE_SHEET_URL) {
       const itemsString = cart.map(c => 
         `${c.menuItem.name} ${c.addons.length > 0 ? '(+'+c.addons.map(a=>a.name).join(',')+')' : ''}`
@@ -162,7 +191,7 @@ export default function App() {
       <div className="min-h-screen bg-green-50 flex items-center justify-center p-4 font-sans">
         <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-8 text-center border-t-8 border-green-600">
           <ChefHat className="w-20 h-20 mx-auto text-green-600 mb-4" />
-          <h1 className="text-3xl font-bold text-gray-800 mb-2">สลัดหลังบ้าน</h1>
+          <h1 className="text-3xl font-bold text-gray-800 mb-2">สวนสลัดหลังบ้าน</h1>
           <p className="text-gray-500 mb-8">กรุณากรอกชื่อของคุณเพื่อเริ่มสั่งอาหาร</p>
           <input type="text" placeholder="ชื่อลูกค้า..." className="w-full px-4 py-3 rounded-lg border-2 border-green-200 focus:border-green-500 focus:outline-none mb-4 text-lg" value={customerName} onChange={(e) => setCustomerName(e.target.value)} />
           <button disabled={!customerName.trim()} onClick={() => setCurrentView('customer')} className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded-lg transition disabled:opacity-50 flex items-center justify-center gap-2">
@@ -182,10 +211,14 @@ export default function App() {
 
   // 2. ADMIN VIEW
   if (currentView === 'admin') {
+    // ปรับการกรองข้อมูลนิดหน่อย เพราะวันที่จาก Sheet อาจจะเป็นรูปแบบ 17/9/2569
     const filteredOrders = orders.filter(order => {
-      const matchDate = order.date.startsWith(dateFilter);
-      const matchSearch = order.id.toLowerCase().includes(searchQuery.toLowerCase()) || order.customerName.toLowerCase().includes(searchQuery.toLowerCase());
-      return matchDate && matchSearch;
+      // ค้นหาแบบกว้างๆ (ทั้งชื่อ รหัส และวันที่)
+      const searchTerm = searchQuery.toLowerCase();
+      const matchSearch = order.id.toLowerCase().includes(searchTerm) || 
+                          order.customerName.toLowerCase().includes(searchTerm) ||
+                          order.date.includes(searchTerm);
+      return matchSearch;
     });
 
     const dailyRev = filteredOrders.filter(o => o.isPaid).reduce((sum, o) => sum + o.total, 0);
@@ -199,9 +232,14 @@ export default function App() {
             <h1 className="text-3xl font-bold text-gray-800 flex items-center gap-2">
               <LayoutDashboard className="text-green-600" /> Admin Dashboard
             </h1>
-            <button onClick={() => setCurrentView('login')} className="flex items-center gap-2 px-4 py-2 bg-white border rounded-lg hover:bg-gray-50">
-              <LogOut className="w-4 h-4" /> ออกจากระบบ
-            </button>
+            <div className="flex gap-2">
+              <button onClick={fetchOrdersFromSheet} disabled={isLoadingOrders} className="flex items-center gap-2 px-4 py-2 bg-white border rounded-lg hover:bg-blue-50 text-blue-600 font-semibold disabled:opacity-50">
+                <RefreshCw className={`w-4 h-4 ${isLoadingOrders ? 'animate-spin' : ''}`} /> {isLoadingOrders ? 'กำลังโหลด...' : 'อัปเดตข้อมูล'}
+              </button>
+              <button onClick={() => setCurrentView('login')} className="flex items-center gap-2 px-4 py-2 bg-white border rounded-lg hover:bg-gray-50">
+                <LogOut className="w-4 h-4" /> ออกจากระบบ
+              </button>
+            </div>
           </div>
 
           {/* Admin Tabs */}
@@ -219,14 +257,11 @@ export default function App() {
                   <p className="text-sm text-gray-500 font-semibold mb-1">ยอดขายที่ค้นพบ (Paid)</p>
                   <p className="text-3xl font-bold text-green-600">฿{dailyRev}</p>
                 </div>
-                <div className="bg-white p-6 rounded-xl shadow-sm border-l-4 border-blue-500 md:col-span-2">
+                <div className="bg-white p-6 rounded-xl shadow-sm border-l-4 border-blue-500 md:col-span-2 flex flex-col justify-center">
                   <p className="text-sm text-gray-500 font-semibold mb-2">ค้นหา & กรองข้อมูล</p>
-                  <div className="flex flex-col md:flex-row gap-2">
-                    <input type="date" value={dateFilter} onChange={(e) => setDateFilter(e.target.value)} className="p-2 border rounded-lg outline-none focus:border-green-500" />
-                    <div className="flex-1 flex bg-gray-50 border rounded-lg px-3 py-2 items-center focus-within:border-green-500">
-                      <Search className="w-5 h-5 text-gray-400 mr-2" />
-                      <input type="text" placeholder="ค้นหารหัสบิล หรือ ชื่อลูกค้า..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="bg-transparent outline-none w-full" />
-                    </div>
+                  <div className="flex bg-gray-50 border rounded-lg px-3 py-2 items-center focus-within:border-green-500">
+                    <Search className="w-5 h-5 text-gray-400 mr-2" />
+                    <input type="text" placeholder="ค้นหารหัสบิล, ชื่อลูกค้า หรือ วันที่..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="bg-transparent outline-none w-full" />
                   </div>
                 </div>
               </div>
@@ -293,10 +328,11 @@ export default function App() {
 
               {/* Order Table */}
               <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-x-auto">
-                <table className="w-full text-left border-collapse min-w-[800px]">
+                <table className="w-full text-left border-collapse min-w-[900px]">
                   <thead>
                     <tr className="bg-gray-50 text-gray-600 text-sm border-b">
                       <th className="p-4 w-12 text-center">เลือก</th>
+                      <th className="p-4">วันที่/เวลา</th>
                       <th className="p-4">รหัสบิล</th>
                       <th className="p-4">ชื่อลูกค้า</th>
                       <th className="p-4 w-1/3">รายการ</th>
@@ -306,12 +342,16 @@ export default function App() {
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredOrders.length === 0 && <tr><td colSpan="7" className="text-center p-8 text-gray-400">ไม่มีออเดอร์ในวันที่หรือการค้นหานี้</td></tr>}
-                    {filteredOrders.map(order => (
+                    {isLoadingOrders ? (
+                      <tr><td colSpan="8" className="text-center p-8 text-blue-500 font-bold animate-pulse">กำลังดึงข้อมูลจาก Google Sheets...</td></tr>
+                    ) : filteredOrders.length === 0 ? (
+                      <tr><td colSpan="8" className="text-center p-8 text-gray-400">ไม่มีออเดอร์ที่ค้นพบ</td></tr>
+                    ) : filteredOrders.map(order => (
                       <tr key={order.id} className={`border-b last:border-0 hover:bg-gray-50 ${selectedBills.includes(order.id) ? 'bg-blue-50/50' : ''}`}>
                         <td className="p-4 text-center">
                           <input type="checkbox" checked={selectedBills.includes(order.id)} onChange={() => toggleSelectBill(order.id)} className="w-4 h-4 text-blue-600 rounded cursor-pointer" />
                         </td>
+                        <td className="p-4 text-xs text-gray-500">{order.date}</td>
                         <td className="p-4 font-mono text-sm">{order.id}</td>
                         <td className="p-4 font-semibold">{order.customerName}</td>
                         <td className="p-4 text-sm text-gray-600">
@@ -343,7 +383,7 @@ export default function App() {
           {/* TAB 3: LOGS */}
           {adminTab === 'logs' && (
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-              <div className="p-4 bg-red-50 border-b border-red-100"><h2 className="font-bold text-red-800">ประวัติออเดอร์ที่ถูกลบ ({deletedLogs.length} รายการ)</h2></div>
+              <div className="p-4 bg-red-50 border-b border-red-100"><h2 className="font-bold text-red-800">ประวัติออเดอร์ที่ถูกลบ (ลบเฉพาะในหน้าเว็บ)</h2></div>
               {deletedLogs.length === 0 ? <p className="p-8 text-center text-gray-400">ยังไม่มีประวัติการลบบิล</p> : (
                 <table className="w-full text-left border-collapse min-w-[600px]">
                   <thead>
@@ -377,11 +417,25 @@ export default function App() {
             <h1 className="text-xl font-bold text-green-700 flex items-center gap-2"><ChefHat className="w-6 h-6" /> สวนสลัดหลังบ้าน</h1>
             <p className="text-sm text-gray-500">สวัสดี, คุณ {customerName}</p>
           </div>
-          <button onClick={() => {
-              const pin = prompt('กรุณากรอกรหัสผ่าน Admin (PIN):');
-              if (pin === '987654') setCurrentView('admin');
-              else if (pin) alert('รหัสผ่านไม่ถูกต้อง!');
-            }} className="text-gray-400 hover:text-gray-600"><LayoutDashboard className="w-5 h-5" /></button>
+          <div className="flex items-center gap-4">
+            <button 
+              onClick={() => {
+                setCustomerName('');
+                setCart([]);
+                setCurrentView('login');
+              }} 
+              className="text-sm text-green-600 bg-green-50 px-3 py-1.5 rounded-lg border border-green-200 hover:bg-green-100 font-semibold transition"
+            >
+              หน้าแรก
+            </button>
+            <button onClick={() => {
+                const pin = prompt('กรุณากรอกรหัสผ่าน Admin (PIN):');
+                if (pin === '987654') setCurrentView('admin');
+                else if (pin) alert('รหัสผ่านไม่ถูกต้อง!');
+              }} className="text-gray-400 hover:text-gray-600">
+                <LayoutDashboard className="w-5 h-5" />
+            </button>
+          </div>
         </div>
       </header>
 
