@@ -29,6 +29,43 @@ const FREE_SWAPS = [
   { id: 's3', label: 'ไม่เอาผัก ขอเปลี่ยนเป็นเส้นเพิ่ม' }
 ];
 
+const ADMIN_PIN = '987654';
+
+// วันที่จาก Sheet มาเป็น ISO (ปีเป็น พ.ศ. อยู่แล้ว) -> แสดงเป็น วว/ดด/ปปปป ชช:นน เวลาไทย
+const formatDate = (value) => {
+  if (!value) return '';
+  const d = new Date(value);
+  if (isNaN(d)) return String(value);
+  return d.toLocaleString('en-GB', { timeZone: 'Asia/Bangkok', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+};
+
+// แปลงรายการในตะกร้า 1 ชิ้น เป็นข้อความสำหรับบันทึกลง Sheet
+const describeCartItem = (c) => {
+  let detail = c.menuItem.name;
+  const removed = c.menuItem.defaultIngredients.filter(ing => !c.ingredients.includes(ing));
+  if (removed.length > 0) {
+    detail += removed.length === c.menuItem.defaultIngredients.length ? ' [ไม่เอาเครื่องเลย]' : ` [ไม่เอา: ${removed.join(', ')}]`;
+  }
+  if (c.swap && c.swap !== FREE_SWAPS[0].label) detail += ` [สลับ: ${c.swap}]`;
+  if (c.sauce && c.sauce !== c.menuItem.sauceOptions[0]) detail += ` [น้ำจิ้ม: ${c.sauce}]`;
+  if (c.addons && c.addons.length > 0) detail += ` (+${c.addons.map(a => a.name).join(', ')})`;
+  if (c.note) detail += ` [หมายเหตุ: ${c.note}]`;
+  return detail;
+};
+
+// แสดงรายการพร้อมไฮไลต์ส่วนที่ปรับเปลี่ยน
+const ItemText = ({ text }) => {
+  const parts = String(text).split(/(\[[^\]]*\]|\(\+[^)]*\))/).filter(p => p.trim());
+  return parts.map((p, i) => {
+    let cls = 'font-bold text-gray-800';
+    if (p.startsWith('[ไม่เอา')) cls = 'font-semibold text-red-600';
+    else if (p.startsWith('[สลับ') || p.startsWith('[น้ำจิ้ม')) cls = 'font-semibold text-purple-600';
+    else if (p.startsWith('(+')) cls = 'font-semibold text-green-700';
+    else if (p.startsWith('[หมายเหตุ')) cls = 'font-semibold text-orange-600';
+    return <span key={i} className={cls}>{i > 0 ? ' ' : ''}{p.trim()}</span>;
+  });
+};
+
 export default function App() {
   const GOOGLE_SHEET_URL = 'https://script.google.com/macros/s/AKfycbzz1ZtD8cx2K_1kL_-I44dKK9qnup_DXuQDKucqTihw5oAN_vmdQpvTzZAcIbIvuulz/exec'; 
 
@@ -43,7 +80,10 @@ export default function App() {
   const [adminTab, setAdminTab] = useState('orders'); 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedBills, setSelectedBills] = useState([]); 
-  const [showSummaryModal, setShowSummaryModal] = useState(false); 
+  const [showSummaryModal, setShowSummaryModal] = useState(false);
+  const [payingOrder, setPayingOrder] = useState(null);
+  const [payerName, setPayerName] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [selectedMenuItem, setSelectedMenuItem] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -63,17 +103,20 @@ export default function App() {
       const formattedOrders = data.map(row => {
         const itemsArray = row.itemsString ? row.itemsString.split(' | ') : [];
         return {
-          id: row.id,
+          id: String(row.id),
           date: row.date,
-          customerName: row.customerName,
+          customerName: String(row.customerName ?? ''),
           total: Number(row.total),
-          isPaid: false,
-          items: itemsArray.map(str => ({ name: str })) 
+          isPaid: Boolean(row.paidBy),
+          paidBy: row.paidBy || '',
+          paidAt: row.paidAt || '',
+          items: itemsArray.map(str => ({ name: str.trim() }))
         };
-      }).reverse(); 
+      }).reverse();
       setOrders(formattedOrders);
     } catch (error) {
       console.error("Fetch Data Error:", error);
+      alert('ดึงข้อมูลจาก Google Sheets ไม่สำเร็จ ลองกด "อัปเดตข้อมูล" อีกครั้ง');
     } finally {
       setIsLoadingOrders(false);
     }
@@ -136,19 +179,14 @@ export default function App() {
   };
 
   const handleSubmitOrder = async () => {
-    if (cart.length === 0) return;
+    if (cart.length === 0 || isSubmitting) return;
+    setIsSubmitting(true);
 
-    const mappedItems = cart.map(c => {
-      let detail = c.menuItem.name;
-      if (c.addons && c.addons.length > 0) detail += ` (+${c.addons.map(a => a.name).join(', ')})`;
-      if (c.note) detail += ` [หมายเหตุ: ${c.note}]`;
-      return detail;
-    });
-
+    const mappedItems = cart.map(describeCartItem);
     const itemsString = mappedItems.join(' | ');
 
     const newOrder = {
-      id: `ORD-${Math.floor(1000 + Math.random() * 9000)}`,
+      id: `ORD-${Date.now().toString(36).toUpperCase().slice(-6)}`,
       customerName,
       items: mappedItems.map(str => ({ name: str })), 
       total: cart.reduce((sum, item) => sum + item.price, 0),
@@ -179,6 +217,55 @@ export default function App() {
         console.error("Sheet Sync Error:", error);
       }
     }
+    setIsSubmitting(false);
+  };
+
+  const handleConfirmPaid = async () => {
+    const name = payerName.trim();
+    if (!payingOrder || !name) return;
+    const paidAt = new Date().toLocaleString('th-TH');
+    const orderId = payingOrder.id;
+    setOrders(orders.map(o => o.id === orderId ? { ...o, isPaid: true, paidBy: name, paidAt } : o));
+    setPayingOrder(null);
+    setPayerName('');
+
+    if (GOOGLE_SHEET_URL) {
+      try {
+        await fetch(GOOGLE_SHEET_URL, {
+          method: 'POST',
+          mode: 'no-cors',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'pay', orderId, paidBy: name, paidAt })
+        });
+      } catch (error) {
+        console.error("Sheet Sync Error:", error);
+        alert('บันทึกสถานะชำระเงินลง Sheet ไม่สำเร็จ');
+      }
+    }
+  };
+
+  const handleUnpay = async (order) => {
+    if (!window.confirm(`ยกเลิกสถานะ "ชำระแล้ว" ของบิล ${order.id} (ยืนยันโดย ${order.paidBy}) ใช่หรือไม่?`)) return;
+    setOrders(orders.map(o => o.id === order.id ? { ...o, isPaid: false, paidBy: '', paidAt: '' } : o));
+
+    if (GOOGLE_SHEET_URL) {
+      try {
+        await fetch(GOOGLE_SHEET_URL, {
+          method: 'POST',
+          mode: 'no-cors',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'unpay', orderId: order.id })
+        });
+      } catch (error) {
+        console.error("Sheet Sync Error:", error);
+      }
+    }
+  };
+
+  const openAdminWithPin = () => {
+    const pin = prompt('กรุณากรอกรหัสผ่าน Admin (PIN):');
+    if (pin === ADMIN_PIN) setCurrentView('admin');
+    else if (pin) alert('รหัสผ่านไม่ถูกต้อง!');
   };
 
   const handleDeleteOrder = async (order) => {
@@ -221,11 +308,7 @@ export default function App() {
           <button disabled={!customerName.trim()} onClick={() => setCurrentView('customer')} className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded-lg transition disabled:opacity-50 flex items-center justify-center gap-2">
             เข้าสู่เมนู <ArrowRight className="w-5 h-5" />
           </button>
-          <button onClick={() => {
-              const pin = prompt('กรุณากรอกรหัสผ่าน Admin (PIN):');
-              if (pin === '987654') setCurrentView('admin');
-              else if (pin) alert('รหัสผ่านไม่ถูกต้อง!');
-            }} className="mt-6 text-sm text-gray-400 hover:text-green-600 underline">
+          <button onClick={openAdminWithPin} className="mt-6 text-sm text-gray-400 hover:text-green-600 underline">
             สำหรับผู้ดูแลระบบ (Admin)
           </button>
         </div>
@@ -236,15 +319,19 @@ export default function App() {
   if (currentView === 'admin') {
     const filteredOrders = orders.filter(order => {
       const searchTerm = searchQuery.toLowerCase();
-      const matchSearch = order.id.toLowerCase().includes(searchTerm) || 
+      const matchSearch = order.id.toLowerCase().includes(searchTerm) ||
                           order.customerName.toLowerCase().includes(searchTerm) ||
-                          order.date.includes(searchTerm);
+                          String(order.date).includes(searchTerm) ||
+                          formatDate(order.date).includes(searchTerm);
       return matchSearch;
     });
 
-    const dailyRev = filteredOrders.filter(o => o.isPaid).reduce((sum, o) => sum + o.total, 0);
-    const selectedSummaryTotal = orders.filter(o => selectedBills.includes(o.id)).reduce((sum, o) => sum + o.total, 0);
-    const totalBoxes = filteredOrders.reduce((sum, order) => sum + order.items.length, 0); 
+    const paidRev = filteredOrders.filter(o => o.isPaid).reduce((sum, o) => sum + o.total, 0);
+    const unpaidRev = filteredOrders.filter(o => !o.isPaid).reduce((sum, o) => sum + o.total, 0);
+    const selectedOrders = orders.filter(o => selectedBills.includes(o.id));
+    const selectedSummaryTotal = selectedOrders.reduce((sum, o) => sum + o.total, 0);
+    const totalBoxes = filteredOrders.reduce((sum, order) => sum + order.items.length, 0);
+    const selectedBoxes = selectedOrders.reduce((sum, order) => sum + order.items.length, 0);
     const isAllSelected = filteredOrders.length > 0 && filteredOrders.every(o => selectedBills.includes(o.id));
     
     const handleSelectAll = () => {
@@ -283,8 +370,9 @@ export default function App() {
             <>
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
                 <div className="bg-white p-6 rounded-xl shadow-sm border-l-4 border-green-500">
-                  <p className="text-sm text-gray-500 font-semibold mb-1">ยอดขายที่ค้นพบ</p>
-                  <p className="text-3xl font-bold text-green-600">฿{dailyRev}</p>
+                  <p className="text-sm text-gray-500 font-semibold mb-1">ชำระแล้ว</p>
+                  <p className="text-3xl font-bold text-green-600">฿{paidRev}</p>
+                  <p className="text-xs text-orange-600 mt-1 font-semibold">ค้างชำระ ฿{unpaidRev}</p>
                 </div>
                 <div className="bg-white p-6 rounded-xl shadow-sm border-l-4 border-orange-500">
                   <p className="text-sm text-gray-500 font-semibold mb-1 flex items-center gap-1"><Box className="w-4 h-4"/> จำนวนกล่อง</p>
@@ -323,25 +411,27 @@ export default function App() {
                     <div className="p-4 border-b flex justify-between items-center bg-blue-50 rounded-t-2xl">
                       <div>
                         <h2 className="font-bold text-blue-800 text-lg flex items-center gap-2">
-                          <Receipt className="w-5 h-5"/> สรุปรายการอาหาร ({selectedBills.length} บิล) (รวม {totalBoxes} กล่อง)
+                          <Receipt className="w-5 h-5"/> สรุปรายการอาหาร ({selectedBills.length} บิล) (รวม {selectedBoxes} กล่อง)
                         </h2>
                         <p className="text-xs text-blue-600 mt-1">วันที่: {new Date().toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' })}</p>
                       </div>
                       <button onClick={() => setShowSummaryModal(false)} className="p-2 bg-white rounded-full hover:bg-gray-200 text-gray-500"><Minus className="w-4 h-4" /></button>
                     </div>
                     <div className="p-4 overflow-y-auto bg-gray-50/50 space-y-2">
-                      {orders.filter(o => selectedBills.includes(o.id)).map(order => (
+                      {selectedOrders.map(order => (
                         <div key={order.id} className="bg-white p-3 rounded-lg border border-gray-200 shadow-sm">
                           <div className="flex justify-between items-center mb-1 border-b border-gray-100 pb-1">
                             <p className="font-bold text-gray-800 text-sm">
                               {order.customerName} <span className="text-xs font-mono text-gray-400 font-normal">({order.id})</span>
                             </p>
-                            <span className="text-sm font-bold text-green-700 bg-green-50 px-2 py-0.5 rounded border border-green-100">฿{order.total}</span>
+                            <span className={`text-sm font-bold px-2 py-0.5 rounded border ${order.isPaid ? 'text-green-700 bg-green-50 border-green-100' : 'text-orange-700 bg-orange-50 border-orange-100'}`}>
+                              ฿{order.total} {order.isPaid ? '✓ จ่ายแล้ว' : 'ค้างจ่าย'}
+                            </span>
                           </div>
                           <div className="space-y-1 pl-1">
                             {order.items.map((item, idx) => (
                               <div key={idx} className="text-xs text-gray-700 leading-tight">
-                                <span className="font-semibold">{idx + 1}. {item.name}</span>
+                                <span className="font-bold text-gray-800">{idx + 1}. </span><ItemText text={item.name} />
                               </div>
                             ))}
                           </div>
@@ -351,6 +441,31 @@ export default function App() {
                     <div className="p-4 border-t bg-white rounded-b-2xl flex justify-between items-center shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
                       <span className="font-bold text-gray-600">ยอดรวมทั้งสิ้น</span>
                       <span className="text-xl font-bold text-blue-700">฿{selectedSummaryTotal}</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {payingOrder && (
+                <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={() => setPayingOrder(null)}>
+                  <div className="bg-white rounded-2xl w-full max-w-sm p-5" onClick={(e) => e.stopPropagation()}>
+                    <h2 className="font-bold text-lg text-gray-800 flex items-center gap-2 mb-1"><CheckCircle2 className="w-5 h-5 text-green-600" /> ยืนยันการชำระเงิน</h2>
+                    <p className="text-sm text-gray-500 mb-4">
+                      บิล <span className="font-mono">{payingOrder.id}</span> · {payingOrder.customerName} · <span className="font-bold text-green-700">฿{payingOrder.total}</span>
+                    </p>
+                    <label className="text-sm font-semibold text-gray-700">ชื่อผู้ยืนยัน (คนรับเงิน)</label>
+                    <input
+                      autoFocus
+                      type="text"
+                      placeholder="พิมพ์ชื่อเพื่อยืนยัน..."
+                      value={payerName}
+                      onChange={(e) => setPayerName(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && handleConfirmPaid()}
+                      className="w-full mt-1 mb-4 px-3 py-2 border-2 border-green-200 rounded-lg focus:border-green-500 outline-none"
+                    />
+                    <div className="flex gap-2">
+                      <button onClick={() => setPayingOrder(null)} className="flex-1 py-2 rounded-lg border text-gray-600 hover:bg-gray-50">ยกเลิก</button>
+                      <button onClick={handleConfirmPaid} disabled={!payerName.trim()} className="flex-1 py-2 rounded-lg bg-green-600 text-white font-bold hover:bg-green-700 disabled:opacity-50">บันทึกว่าจ่ายแล้ว</button>
                     </div>
                   </div>
                 </div>
@@ -382,22 +497,32 @@ export default function App() {
                         <td className="p-4 text-center">
                           <input type="checkbox" checked={selectedBills.includes(order.id)} onChange={() => toggleSelectBill(order.id)} className="w-4 h-4 text-blue-600 rounded cursor-pointer" />
                         </td>
-                        <td className="p-4 text-xs text-gray-500">{order.date}</td>
+                        <td className="p-4 text-xs text-gray-500 whitespace-nowrap">{formatDate(order.date)}</td>
                         <td className="p-4 font-mono text-sm">{order.id}</td>
                         <td className="p-4 font-semibold">{order.customerName}</td>
                         <td className="p-4 text-sm text-gray-600">
                           {order.items.map((item, idx) => (
                             <div key={idx} className="mb-1 bg-gray-100 p-1 px-2 rounded break-words whitespace-pre-wrap">
-                              <span className="font-bold text-gray-800">{idx + 1}. {item.name}</span>
+                              <span className="font-bold text-gray-800">{idx + 1}. </span><ItemText text={item.name} />
                             </div>
                           ))}
                         </td>
                         <td className="p-4 font-bold text-gray-800">฿{order.total}</td>
                         <td className="p-4">
-                          <button onClick={() => setOrders(orders.map(o => o.id === order.id ? { ...o, isPaid: !o.isPaid } : o))} className={`px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1 w-max ${order.isPaid ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'}`}>
+                          <button
+                            onClick={() => order.isPaid ? handleUnpay(order) : (setPayingOrder(order), setPayerName(''))}
+                            title={order.isPaid ? 'กดเพื่อยกเลิกสถานะชำระเงิน' : 'กดเพื่อบันทึกว่าชำระเงินแล้ว'}
+                            className={`px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1 w-max cursor-pointer transition ${order.isPaid ? 'bg-green-100 text-green-700 hover:bg-green-200' : 'bg-orange-100 text-orange-700 hover:bg-orange-200'}`}
+                          >
                             {order.isPaid ? <CheckCircle2 className="w-4 h-4" /> : <Circle className="w-4 h-4" />}
                             {order.isPaid ? 'ชำระแล้ว' : 'รอชำระเงิน'}
                           </button>
+                          {order.isPaid && (
+                            <p className="text-[11px] text-gray-500 mt-1 leading-tight">
+                              โดย <span className="font-semibold text-gray-700">{order.paidBy}</span>
+                              {order.paidAt && <><br />{formatDate(order.paidAt)}</>}
+                            </p>
+                          )}
                         </td>
                         <td className="p-4 text-center">
                           <button onClick={() => handleDeleteOrder(order)} className="text-red-400 hover:text-red-600 p-2 rounded-full hover:bg-red-50"><Trash2 className="w-5 h-5" /></button>
@@ -423,7 +548,7 @@ export default function App() {
                   <tbody>
                     {deletedLogs.map((log, idx) => (
                       <tr key={idx} className="border-b last:border-0 text-gray-500 bg-gray-50/50">
-                        <td className="p-4 text-sm">{log.deletedAt}</td>
+                        <td className="p-4 text-sm">{formatDate(log.deletedAt)}</td>
                         <td className="p-4 font-mono text-sm line-through">{log.id}</td><td className="p-4">{log.customerName}</td><td className="p-4">฿{log.total}</td>
                       </tr>
                     ))}
@@ -449,11 +574,7 @@ export default function App() {
             <button onClick={() => { setCustomerName(''); setCart([]); setCurrentView('login'); }} className="text-sm text-green-600 bg-green-50 px-3 py-1.5 rounded-lg border border-green-200 hover:bg-green-100 font-semibold transition">
               หน้าแรก
             </button>
-            <button onClick={() => {
-                const pin = prompt('กรุณากรอกรหัสผ่าน Admin (PIN):');
-                if (pin === '987654') setCurrentView('admin');
-                else if (pin) alert('รหัสผ่านไม่ถูกต้อง!');
-              }} className="text-gray-400 hover:text-gray-600"><LayoutDashboard className="w-5 h-5" /></button>
+            <button onClick={openAdminWithPin} className="text-gray-400 hover:text-gray-600"><LayoutDashboard className="w-5 h-5" /></button>
           </div>
         </div>
       </header>
@@ -490,17 +611,13 @@ export default function App() {
               {cart.map(item => (
                 <div key={item.cartId} className="flex justify-between items-start border-b border-gray-50 py-2">
                   <div>
-                    <p className="font-semibold text-gray-800">{item.menuItem.name}</p>
-                    <p className="text-xs text-gray-500">
-                      {item.ingredients.length === 0 ? 'ไม่ใส่เครื่องเลย' : `เครื่อง: ${item.ingredients.length} อย่าง`}
-                      {item.addons.length > 0 && ` | เพิ่ม: ${item.addons.map(a => a.name).join(', ')}`}
-                    </p>
+                    <p className="text-xs text-gray-500"><ItemText text={describeCartItem(item)} /></p>
                   </div>
                   <button onClick={() => setCart(cart.filter(c => c.cartId !== item.cartId))} className="text-red-400 hover:text-red-600 p-1"><Trash2 className="w-4 h-4" /></button>
                 </div>
               ))}
             </div>
-            <button onClick={handleSubmitOrder} className="w-full bg-green-600 text-white font-bold py-3 rounded-lg hover:bg-green-700 transition">ส่งออเดอร์ (Submit Order)</button>
+            <button onClick={handleSubmitOrder} disabled={isSubmitting} className="w-full bg-green-600 text-white font-bold py-3 rounded-lg hover:bg-green-700 transition disabled:opacity-50">{isSubmitting ? 'กำลังส่ง...' : 'ส่งออเดอร์ (Submit Order)'}</button>
           </div>
         </div>
       )}
