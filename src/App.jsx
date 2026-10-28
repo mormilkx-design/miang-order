@@ -84,6 +84,7 @@ export default function App() {
   const [payingOrder, setPayingOrder] = useState(null);
   const [payerName, setPayerName] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [sheetSupportsPay, setSheetSupportsPay] = useState(true);
 
   const [selectedMenuItem, setSelectedMenuItem] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -100,7 +101,9 @@ export default function App() {
     try {
       const response = await fetch(GOOGLE_SHEET_URL);
       const data = await response.json();
-      const formattedOrders = data.map(row => {
+      // Apps Script เวอร์ชันใหม่จะส่ง paidBy มาทุกแถว ถ้าไม่มีแปลว่ายังเป็นสคริปต์เก่าที่บันทึกการชำระเงินไม่ได้
+      setSheetSupportsPay(data.length === 0 || 'paidBy' in data[0]);
+      const formattedOrders = data.filter(row => row.customerName !== '' || row.total !== '').map(row => {
         const itemsArray = row.itemsString ? row.itemsString.split(' | ') : [];
         return {
           id: String(row.id),
@@ -368,6 +371,12 @@ export default function App() {
 
           {adminTab === 'orders' && (
             <>
+              {!sheetSupportsPay && (
+                <div className="bg-red-50 border border-red-200 text-red-700 p-4 rounded-xl mb-6 text-sm">
+                  <b>Apps Script ยังเป็นเวอร์ชันเก่า</b> — ปุ่มบันทึกการชำระเงินถูกปิดไว้ เพื่อไม่ให้เกิดแถวว่างใน Sheet
+                  <br />แก้โดย: เปิด Apps Script &gt; Deploy &gt; Manage deployments &gt; ✏️ Edit &gt; Version: <b>New version</b> &gt; Deploy แล้วกด "อัปเดตข้อมูล"
+                </div>
+              )}
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
                 <div className="bg-white p-6 rounded-xl shadow-sm border-l-4 border-green-500">
                   <p className="text-sm text-gray-500 font-semibold mb-1">ชำระแล้ว</p>
@@ -510,7 +519,11 @@ export default function App() {
                         <td className="p-4 font-bold text-gray-800">฿{order.total}</td>
                         <td className="p-4">
                           <button
-                            onClick={() => order.isPaid ? handleUnpay(order) : (setPayingOrder(order), setPayerName(''))}
+                            onClick={() => {
+                              if (!sheetSupportsPay) return alert('Apps Script ยังเป็นเวอร์ชันเก่า บันทึกการชำระเงินไม่ได้\nกรุณา Deploy > Manage deployments > Edit > Version: New version > Deploy แล้วกด "อัปเดตข้อมูล"');
+                              if (order.isPaid) handleUnpay(order);
+                              else { setPayingOrder(order); setPayerName(''); }
+                            }}
                             title={order.isPaid ? 'กดเพื่อยกเลิกสถานะชำระเงิน' : 'กดเพื่อบันทึกว่าชำระเงินแล้ว'}
                             className={`px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1 w-max cursor-pointer transition ${order.isPaid ? 'bg-green-100 text-green-700 hover:bg-green-200' : 'bg-orange-100 text-orange-700 hover:bg-orange-200'}`}
                           >
